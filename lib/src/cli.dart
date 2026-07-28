@@ -14,7 +14,7 @@ import 'io/bundle_writer.dart';
 import 'validator.dart';
 
 /// The package version reported by `okf --version`.
-const okfPackageVersion = '0.1.0';
+const okfPackageVersion = '0.1.1';
 
 /// A destination for one complete CLI output line.
 typedef OkfCliOutput = void Function(String line);

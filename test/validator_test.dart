@@ -90,7 +90,7 @@ okf_version: "0.2"
         'log.md': '''
 ---
 type: Log
-title: Official fixture inconsistency
+title: Producer inconsistency
 ---
 # Log
 ## 2026-02-30

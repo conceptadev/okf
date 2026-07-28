@@ -115,14 +115,9 @@ The package models Attested Computation contracts but does not execute
 computations or attesters. Google Cloud enrichment, Gemini orchestration,
 web crawling, and the reference HTML viewer are outside this package.
 
-The Rust project under `references/` is a development-only research input
-and is excluded from source control and published archives.
-
 ## License
 
-Apache License 2.0. The official interoperability fixtures retain their
-upstream attribution in the [third-party notices][third-party-notices].
+Apache License 2.0.
 
 [spec]: https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/3fcbb9f828c2f23d109c855ee403c3a4c81f3a96/okf/SPEC.md
 [example]: https://github.com/kshdotdev/okf/blob/main/example/okf.dart
-[third-party-notices]: https://github.com/kshdotdev/okf/blob/main/THIRD_PARTY_NOTICES.md

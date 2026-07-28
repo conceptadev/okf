@@ -1,6 +1,6 @@
 name: okf
 description: A format-first Dart toolkit for reading, validating, writing, indexing, and graphing Open Knowledge Format bundles.
-version: 0.1.0
+version: 0.1.1
 repository: https://github.com/kshdotdev/okf
 issue_tracker: https://github.com/kshdotdev/okf/issues
 topics:
