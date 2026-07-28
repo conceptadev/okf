@@ -1,0 +1,9 @@
+.dart_tool/
+.packages
+build/
+coverage/
+doc/api/
+pubspec.lock
+
+# Research checkouts are development inputs, not package sources.
+/references/
