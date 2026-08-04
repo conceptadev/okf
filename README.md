@@ -120,4 +120,4 @@ web crawling, and the reference HTML viewer are outside this package.
 Apache License 2.0.
 
 [spec]: https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/3fcbb9f828c2f23d109c855ee403c3a4c81f3a96/okf/SPEC.md
-[example]: https://github.com/kshdotdev/okf/blob/main/example/okf.dart
+[example]: https://github.com/conceptadev/okf/blob/main/example/okf.dart
