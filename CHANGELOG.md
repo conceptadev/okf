@@ -1,3 +1,8 @@
+## 0.1.2
+
+- Move package ownership to the verified `concepta.dev` publisher.
+- Update repository and issue links for the `conceptadev` organization.
+
 ## 0.1.1
 
 - Remove development-only and copied third-party test artifacts.
