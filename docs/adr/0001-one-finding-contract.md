@@ -41,3 +41,11 @@ return the *same Report*, not merely the same IDs.
   CI gate's judgment before pushing.
 - `OkfBundleLoadIssue` and `_CliDiagnostic` are absorbed during the contract
   work.
+
+## Clarification (2026-08-14)
+
+The Verdict judges loaded content only: it yields exit 0 or 1. Exit 2
+(usage) is an adapter decision made before a Report exists — an
+unparseable invocation or an unreadable bundle source. Malformed content
+inside a loadable bundle merges into the Report as findings and exits 1,
+matching the CLI's existing behavior.

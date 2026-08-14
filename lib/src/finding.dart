@@ -226,7 +226,11 @@ enum OkfExitCode {
   /// An error, or an advisory in strict mode, remains active.
   findings(1),
 
-  /// The invocation or bundle source is invalid.
+  /// The invocation failed before a report existed.
+  ///
+  /// Adapters return this for an unparseable invocation or an unreadable
+  /// bundle source. Malformed content inside a loadable bundle merges into
+  /// the [OkfReport] as findings and exits through [findings] instead.
   usage(2);
 
   const OkfExitCode(this.value);
@@ -236,6 +240,10 @@ enum OkfExitCode {
 }
 
 /// The judgment produced from findings, suppressions, and strictness.
+///
+/// A verdict judges loaded content only, so [result] is always
+/// [OkfExitCode.success] or [OkfExitCode.findings]; [OkfExitCode.usage] is
+/// decided by an adapter before a report exists.
 final class OkfVerdict {
   OkfVerdict._({
     required this.report,
