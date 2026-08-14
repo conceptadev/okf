@@ -49,3 +49,8 @@ The Verdict judges loaded content only: it yields exit 0 or 1. Exit 2
 unparseable invocation or an unreadable bundle source. Malformed content
 inside a loadable bundle merges into the Report as findings and exits 1,
 matching the CLI's existing behavior.
+
+Absorption ownership: the catalog sweep (#4) owns migrating validator
+diagnostics into catalog-registered rules, merging `OkfBundleLoadIssue`
+into the Report, deleting the CLI's private diagnostic, and switching
+adapters to consume the Verdict.
