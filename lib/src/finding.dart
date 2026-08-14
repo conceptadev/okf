@@ -140,7 +140,11 @@ final class OkfReport {
     Iterable<OkfFindingSuppression> suppressions =
         const <OkfFindingSuppression>[],
   })  : findings = List<OkfFinding>.unmodifiable(findings),
-        suppressions = List<OkfFindingSuppression>.unmodifiable(suppressions);
+        suppressions = List<OkfFindingSuppression>.unmodifiable(suppressions) {
+    for (final suppression in this.suppressions) {
+      _suppressionsById.putIfAbsent(suppression.id, () => suppression);
+    }
+  }
 
   /// Every finding, including suppressed findings, in producer order.
   final List<OkfFinding> findings;
@@ -148,14 +152,20 @@ final class OkfReport {
   /// Suppression data supplied by the caller.
   final List<OkfFindingSuppression> suppressions;
 
+  final Map<OkfFindingId, OkfFindingSuppression> _suppressionsById =
+      <OkfFindingId, OkfFindingSuppression>{};
+
   /// Findings that still participate in the verdict.
   List<OkfFinding> get activeFindings => List<OkfFinding>.unmodifiable(
-        findings.where((finding) => _suppressionFor(finding.id) == null),
+        findings.where(
+          (finding) => !_suppressionsById.containsKey(finding.id),
+        ),
       );
 
   /// The number of findings matched by a suppression.
-  int get suppressedCount =>
-      findings.where((finding) => _suppressionFor(finding.id) != null).length;
+  int get suppressedCount => findings
+      .where((finding) => _suppressionsById.containsKey(finding.id))
+      .length;
 
   /// Projects this report as deterministic, line-oriented text.
   String toText() => findings.map(_findingToText).join('\n');
@@ -179,7 +189,7 @@ final class OkfReport {
       }
       prefix.write(': ');
     }
-    final suppression = _suppressionFor(finding.id);
+    final suppression = _suppressionsById[finding.id];
     final suppressionText = suppression == null
         ? ''
         : suppression.note == null
@@ -191,7 +201,7 @@ final class OkfReport {
 
   Map<String, Object?> _findingToJson(OkfFinding finding) {
     final location = finding.location;
-    final suppression = _suppressionFor(finding.id);
+    final suppression = _suppressionsById[finding.id];
     return <String, Object?>{
       'id': finding.id.value,
       'severity': finding.severity.name,
@@ -205,15 +215,6 @@ final class OkfReport {
       'suppressed': suppression != null,
       if (suppression?.note != null) 'suppression_note': suppression!.note,
     };
-  }
-
-  OkfFindingSuppression? _suppressionFor(OkfFindingId id) {
-    for (final suppression in suppressions) {
-      if (suppression.id == id) {
-        return suppression;
-      }
-    }
-    return null;
   }
 }
 
@@ -242,17 +243,8 @@ final class OkfVerdict {
     required this.result,
   });
 
-  /// Evaluates the complete validation exit-code matrix.
-  factory OkfVerdict.evaluate({
-    Iterable<OkfFinding> findings = const <OkfFinding>[],
-    Iterable<OkfFindingSuppression> suppressions =
-        const <OkfFindingSuppression>[],
-    bool strict = false,
-  }) {
-    final report = OkfReport(
-      findings: findings,
-      suppressions: suppressions,
-    );
+  /// Judges [report] under the complete validation exit-code matrix.
+  factory OkfVerdict.of(OkfReport report, {bool strict = false}) {
     final fails = report.activeFindings.any(
       (finding) =>
           finding.severity == OkfFindingSeverity.error ||

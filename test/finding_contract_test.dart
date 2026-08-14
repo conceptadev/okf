@@ -79,28 +79,47 @@ void main() {
       message: 'Review.',
     );
 
-    expect(OkfVerdict.evaluate().exitCode, 0);
-    expect(OkfVerdict.evaluate(findings: <OkfFinding>[error]).exitCode, 1);
+    expect(OkfVerdict.of(OkfReport()).exitCode, 0);
+    expect(OkfVerdict.of(OkfReport(findings: <OkfFinding>[error])).exitCode, 1);
     expect(
-      OkfVerdict.evaluate(findings: <OkfFinding>[advisory]).exitCode,
+      OkfVerdict.of(OkfReport(findings: <OkfFinding>[advisory])).exitCode,
       0,
     );
     expect(
-      OkfVerdict.evaluate(
-        findings: <OkfFinding>[advisory],
+      OkfVerdict.of(
+        OkfReport(findings: <OkfFinding>[advisory]),
         strict: true,
       ).exitCode,
       1,
     );
     expect(
-      OkfVerdict.evaluate(
-        findings: <OkfFinding>[error],
-        suppressions: <OkfFindingSuppression>[
-          OkfFindingSuppression(id: OkfFindingId('okf/invalid')),
-        ],
+      OkfVerdict.of(
+        OkfReport(
+          findings: <OkfFinding>[error],
+          suppressions: <OkfFindingSuppression>[
+            OkfFindingSuppression(id: OkfFindingId('okf/invalid')),
+          ],
+        ),
       ).exitCode,
       0,
     );
     expect(OkfExitCode.usage.value, 2);
+  });
+
+  test('verdict judges the same report instance it exposes', () {
+    final report = OkfReport(
+      findings: <OkfFinding>[
+        OkfFinding(
+          id: OkfFindingId.okf('review'),
+          severity: OkfFindingSeverity.advisory,
+          message: 'Review.',
+        ),
+      ],
+    );
+    final verdict = OkfVerdict.of(report, strict: true);
+
+    expect(verdict.report, same(report));
+    expect(verdict.strict, isTrue);
+    expect(verdict.result, OkfExitCode.findings);
   });
 }
