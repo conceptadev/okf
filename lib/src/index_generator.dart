@@ -4,28 +4,7 @@ import 'package:path/path.dart' as p;
 
 import 'bundle.dart';
 import 'document.dart';
-
-/// One item used to describe a generated directory index.
-final class OkfIndexEntry {
-  const OkfIndexEntry({
-    required this.type,
-    required this.title,
-    required this.link,
-    required this.description,
-  });
-
-  /// The section heading in which the entry appears.
-  final String type;
-
-  /// The display label for the entry.
-  final String title;
-
-  /// A URL relative to the generated index.
-  final String link;
-
-  /// A short optional summary.
-  final String description;
-}
+import 'index_log.dart';
 
 /// Supplies a deterministic description for a directory index.
 typedef OkfDirectoryDescriptionSynthesizer = String Function(
