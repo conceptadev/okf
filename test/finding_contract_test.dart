@@ -26,13 +26,13 @@ void main() {
 
   test('report projects findings and their suppression state', () {
     final finding = OkfFinding(
-      id: OkfFindingId('vendor/review-needed'),
+      id: OkfFindingId.parse('vendor/review-needed'),
       severity: OkfFindingSeverity.advisory,
       message: 'Review this value.',
       location: OkfFindingLocation(path: 'concept.md', line: 4, column: 2),
     );
     final suppression = OkfFindingSuppression(
-      id: OkfFindingId('vendor/review-needed'),
+      id: OkfFindingId.parse('vendor/review-needed'),
       note: 'Accepted for this bundle.',
     );
 
@@ -69,12 +69,12 @@ void main() {
 
   test('verdict owns the validation exit-code matrix', () {
     final error = OkfFinding(
-      id: OkfFindingId('okf/invalid'),
+      id: OkfFindingId.okf('invalid'),
       severity: OkfFindingSeverity.error,
       message: 'Invalid.',
     );
     final advisory = OkfFinding(
-      id: OkfFindingId('okf/review'),
+      id: OkfFindingId.okf('review'),
       severity: OkfFindingSeverity.advisory,
       message: 'Review.',
     );
@@ -97,7 +97,7 @@ void main() {
         OkfReport(
           findings: <OkfFinding>[error],
           suppressions: <OkfFindingSuppression>[
-            OkfFindingSuppression(id: OkfFindingId('okf/invalid')),
+            OkfFindingSuppression(id: OkfFindingId.okf('invalid')),
           ],
         ),
       ).exitCode,

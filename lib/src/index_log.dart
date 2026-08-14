@@ -17,7 +17,7 @@ final class OkfIndexEntry {
   /// A URL relative to the containing index.
   final String link;
 
-  /// A short optional summary.
+  /// A short summary, empty when none is available.
   final String description;
 
   @override

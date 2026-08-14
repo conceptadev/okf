@@ -1,8 +1,5 @@
 /// A stable finding identifier in `<namespace>/<code>` form.
 final class OkfFindingId {
-  /// Creates and validates a namespaced identifier.
-  factory OkfFindingId(String value) => OkfFindingId.parse(value);
-
   /// Creates and validates an identifier from separate grammar components.
   factory OkfFindingId.fromParts(String namespace, String code) =>
       OkfFindingId.parse('$namespace/$code');
@@ -65,6 +62,9 @@ enum OkfFindingSeverity {
 /// A logical position within a bundle.
 final class OkfFindingLocation {
   /// Creates a bundle-relative source location.
+  ///
+  /// [line] and [column] are one-based when present, and a column requires
+  /// a line; violations are rejected in development builds.
   const OkfFindingLocation({
     required this.path,
     this.line,

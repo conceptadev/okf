@@ -1,3 +1,12 @@
+## 0.2.0
+
+- Add the engine contract types: the Finding contract (findings, report,
+  verdict, exit codes), the open rule catalog registration seam, the
+  `OkfBundleChangeSet` contract with sealed atomic apply results, and the
+  index/log entry model.
+- Move `OkfIndexEntry` into the index/log model and add value equality to
+  index and log entries.
+
 ## 0.1.2
 
 - Move package ownership to the verified `concepta.dev` publisher.
