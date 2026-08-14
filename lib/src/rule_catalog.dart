@@ -1,7 +1,6 @@
-import 'dart:collection';
-
 import 'bundle.dart';
 import 'finding.dart';
+import 'json_data.dart';
 
 /// Parameter values supplied to a registered rule.
 typedef OkfRuleParameters = Map<String, Object?>;
@@ -22,9 +21,7 @@ final class OkfRuleCatalogEntry {
     required this.defaultSeverity,
     required Map<String, Object?> parameterSchema,
     required this.run,
-  }) : parameterSchema = UnmodifiableMapView<String, Object?>(
-          Map<String, Object?>.of(parameterSchema),
-        ) {
+  }) : parameterSchema = deepUnmodifiableJsonMap(parameterSchema) {
     if (prose.trim().isEmpty) {
       throw ArgumentError.value(prose, 'prose', 'Rule prose must not be empty');
     }
@@ -46,6 +43,8 @@ final class OkfRuleCatalogEntry {
   final OkfFindingSeverity defaultSeverity;
 
   /// The JSON-compatible schema for accepted [run] parameters.
+  ///
+  /// Held as a deep, unmodifiable copy of the registered schema.
   final Map<String, Object?> parameterSchema;
 
   /// The rule execution function.

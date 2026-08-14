@@ -1,9 +1,8 @@
-import 'dart:collection';
-
 import 'bundle.dart';
 import 'concept_id.dart';
 import 'document.dart';
 import 'finding.dart';
+import 'json_data.dart';
 
 /// A prospective mutation included in an [OkfBundleChangeSet].
 sealed class OkfBundleChange {
@@ -29,14 +28,14 @@ final class OkfUpdateConceptChange extends OkfBundleChange {
     required this.id,
     Map<String, Object?> frontmatterChanges = const <String, Object?>{},
     this.body,
-  }) : frontmatterChanges = UnmodifiableMapView<String, Object?>(
-          Map<String, Object?>.of(frontmatterChanges),
-        );
+  }) : frontmatterChanges = deepUnmodifiableJsonMap(frontmatterChanges);
 
   /// The concept to update.
   final OkfConceptId id;
 
   /// Frontmatter values to overlay while retaining unmanaged fields.
+  ///
+  /// Held as a deep, unmodifiable copy of the requested values.
   final Map<String, Object?> frontmatterChanges;
 
   /// Replacement Markdown body, or `null` to retain the existing body.

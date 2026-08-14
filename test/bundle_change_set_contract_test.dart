@@ -12,7 +12,10 @@ void main() {
       ),
       OkfUpdateConceptChange(
         id: OkfConceptId('existing'),
-        frontmatterChanges: const <String, Object?>{'title': 'Updated'},
+        frontmatterChanges: const <String, Object?>{
+          'title': 'Updated',
+          'meta': <String, Object?>{'reviewed': false},
+        },
       ),
       OkfLinkConceptsChange(
         source: OkfConceptId('existing'),
@@ -32,6 +35,11 @@ void main() {
     final update = changes.changes[1] as OkfUpdateConceptChange;
     expect(
       () => update.frontmatterChanges['new'] = true,
+      throwsUnsupportedError,
+    );
+    expect(
+      () => (update.frontmatterChanges['meta']
+          as Map<String, Object?>)['reviewed'] = true,
       throwsUnsupportedError,
     );
   });

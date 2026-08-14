@@ -27,6 +27,11 @@ void main() {
       'object',
     );
     expect(
+      () => (catalog.entries.single.parameterSchema['properties']
+          as Map<String, Object?>)['minimumLength'] = true,
+      throwsUnsupportedError,
+    );
+    expect(
       catalog.entries.single.run(
         OkfBundle.fromDocuments(const <String, OkfDocument>{}),
         const <String, Object?>{'minimumLength': 4},
