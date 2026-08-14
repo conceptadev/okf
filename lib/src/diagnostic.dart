@@ -17,9 +17,6 @@ enum OkfDiagnosticSeverity {
 ///
 /// Lines and columns are one-based when present. [path] is a logical bundle
 /// path, not necessarily an operating-system path.
-///
-/// Transitional: base diagnostics migrate to the `OkfFinding` contract as
-/// rules register in the rule catalog; this type is absorbed by that work.
 final class OkfDiagnostic {
   /// Creates a diagnostic.
   const OkfDiagnostic(

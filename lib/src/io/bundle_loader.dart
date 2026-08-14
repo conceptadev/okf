@@ -9,9 +9,6 @@ import '../bundle.dart';
 import '../document.dart';
 
 /// A document that could not be decoded or parsed while loading a bundle.
-///
-/// Transitional: load issues merge into the shared `OkfReport` as findings;
-/// this type is absorbed by that work.
 final class OkfBundleLoadIssue {
   /// Creates a bundle loading issue.
   const OkfBundleLoadIssue({

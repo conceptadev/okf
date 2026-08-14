@@ -1,7 +1,7 @@
 /// Recursively copies [source] into an unmodifiable JSON-compatible map.
 ///
-/// Nested maps and lists are copied and made unmodifiable as well; every
-/// other value is shared as-is.
+/// Values that are neither maps nor lists are shared with [source] rather
+/// than copied.
 Map<String, Object?> deepUnmodifiableJsonMap(Map<String, Object?> source) =>
     Map<String, Object?>.unmodifiable(
       source.map(

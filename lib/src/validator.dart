@@ -3,9 +3,6 @@ import 'diagnostic.dart';
 import 'document.dart';
 
 /// The complete result of validating an in-memory OKF bundle.
-///
-/// Transitional: validation results migrate to the shared `OkfReport`
-/// projection as rules register in the rule catalog.
 final class OkfValidationReport {
   OkfValidationReport(Iterable<OkfDiagnostic> diagnostics)
       : diagnostics = List<OkfDiagnostic>.unmodifiable(diagnostics);
