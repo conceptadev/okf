@@ -68,7 +68,10 @@ enum OkfFindingSeverity {
   error,
 
   /// Guidance that fails only when strict validation is requested.
-  advisory,
+  advisory;
+
+  /// The stable lowercase representation used in JSON and text output.
+  String get wireValue => name;
 }
 
 /// A logical position within a bundle.
@@ -97,6 +100,13 @@ final class OkfFindingLocation {
   /// The one-based source column, when known.
   final int? column;
 
+  /// Projects this location as a JSON-compatible object.
+  Map<String, Object?> toJson() => <String, Object?>{
+        'path': path,
+        if (line != null) 'line': line,
+        if (column != null) 'column': column,
+      };
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -107,6 +117,19 @@ final class OkfFindingLocation {
 
   @override
   int get hashCode => Object.hash(path, line, column);
+
+  /// Renders `path`, `path:line`, or `path:line:column`.
+  @override
+  String toString() {
+    final text = StringBuffer(path);
+    if (line != null) {
+      text.write(':$line');
+      if (column != null) {
+        text.write(':$column');
+      }
+    }
+    return text.toString();
+  }
 }
 
 /// A single observation produced while loading or validating a bundle.
@@ -119,7 +142,10 @@ final class OkfFinding {
     this.location,
   });
 
-  /// The stable identity minted by the finding's registering catalog.
+  /// The stable identity of the rule that produced this finding.
+  ///
+  /// IDs are minted by the catalog entry that registers the rule; see
+  /// `OkfRuleCatalogEntry.finding`.
   final OkfFindingId id;
 
   /// How this finding affects conformance.
@@ -130,6 +156,36 @@ final class OkfFinding {
 
   /// The associated bundle location, when one is available.
   final OkfFindingLocation? location;
+
+  /// Projects this finding as a JSON-compatible object.
+  ///
+  /// Suppression state is a property of the [OkfReport] that holds the
+  /// finding, so it is not part of this projection.
+  Map<String, Object?> toJson() => <String, Object?>{
+        'id': id.value,
+        'severity': severity.wireValue,
+        'message': message,
+        if (location != null) 'location': location!.toJson(),
+      };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is OkfFinding &&
+          id == other.id &&
+          severity == other.severity &&
+          message == other.message &&
+          location == other.location;
+
+  @override
+  int get hashCode => Object.hash(id, severity, message, location);
+
+  /// Renders the one-line text form: `[location: ]severity id: message`.
+  @override
+  String toString() {
+    final prefix = location == null ? '' : '$location: ';
+    return '$prefix${severity.wireValue} $id: $message';
+  }
 }
 
 /// Caller-supplied suppression data for one finding ID.
@@ -142,6 +198,14 @@ final class OkfFindingSuppression {
 
   /// The caller's optional rationale.
   final String? note;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is OkfFindingSuppression && id == other.id && note == other.note;
+
+  @override
+  int get hashCode => Object.hash(id, note);
 }
 
 /// Findings and their applied suppression state.
@@ -189,41 +253,20 @@ final class OkfReport {
       };
 
   String _findingToText(OkfFinding finding) {
-    final location = finding.location;
-    final prefix = StringBuffer();
-    if (location != null) {
-      prefix.write(location.path);
-      if (location.line != null) {
-        prefix.write(':${location.line}');
-        if (location.column != null) {
-          prefix.write(':${location.column}');
-        }
-      }
-      prefix.write(': ');
-    }
     final suppression = _suppressionsById[finding.id];
-    final suppressionText = suppression == null
-        ? ''
-        : suppression.note == null
-            ? ' (suppressed)'
-            : ' (suppressed: ${suppression.note})';
-    return '$prefix${finding.severity.name} ${finding.id}: '
-        '${finding.message}$suppressionText';
+    if (suppression == null) {
+      return '$finding';
+    }
+    final note = suppression.note;
+    return note == null
+        ? '$finding (suppressed)'
+        : '$finding (suppressed: $note)';
   }
 
   Map<String, Object?> _findingToJson(OkfFinding finding) {
-    final location = finding.location;
     final suppression = _suppressionsById[finding.id];
     return <String, Object?>{
-      'id': finding.id.value,
-      'severity': finding.severity.name,
-      'message': finding.message,
-      if (location != null)
-        'location': <String, Object?>{
-          'path': location.path,
-          if (location.line != null) 'line': location.line,
-          if (location.column != null) 'column': location.column,
-        },
+      ...finding.toJson(),
       'suppressed': suppression != null,
       if (suppression?.note != null) 'suppression_note': suppression!.note,
     };

@@ -76,6 +76,50 @@ void main() {
     });
   });
 
+  test('findings, locations, and suppressions are values', () {
+    OkfFinding finding({String path = 'a.md', int? line, int? column}) =>
+        OkfFinding(
+          id: OkfFindingId.okf('sample'),
+          severity: OkfFindingSeverity.error,
+          message: 'Sample.',
+          location: OkfFindingLocation(path: path, line: line, column: column),
+        );
+
+    expect(finding(line: 3, column: 1), finding(line: 3, column: 1));
+    expect(finding(line: 3, column: 1).hashCode,
+        finding(line: 3, column: 1).hashCode);
+    expect(finding(line: 3), isNot(finding(line: 4)));
+    expect(finding(path: 'b.md'), isNot(finding()));
+    expect(
+      OkfFindingSuppression(id: OkfFindingId.okf('sample'), note: 'n'),
+      OkfFindingSuppression(id: OkfFindingId.okf('sample'), note: 'n'),
+    );
+    expect(
+      OkfFindingSuppression(id: OkfFindingId.okf('sample')),
+      isNot(OkfFindingSuppression(id: OkfFindingId.okf('sample'), note: 'n')),
+    );
+
+    expect('${finding()}', 'a.md: error okf/sample: Sample.');
+    expect('${finding(line: 3)}', 'a.md:3: error okf/sample: Sample.');
+    expect('${finding(line: 3, column: 1)}',
+        'a.md:3:1: error okf/sample: Sample.');
+    expect(
+      '${OkfFinding(
+        id: OkfFindingId.okf('sample'),
+        severity: OkfFindingSeverity.advisory,
+        message: 'Sample.',
+      )}',
+      'advisory okf/sample: Sample.',
+    );
+    expect(finding(line: 3).toJson(), <String, Object?>{
+      'id': 'okf/sample',
+      'severity': 'error',
+      'message': 'Sample.',
+      'location': <String, Object?>{'path': 'a.md', 'line': 3},
+    });
+    expect(OkfFindingSeverity.advisory.wireValue, 'advisory');
+  });
+
   test('verdict owns the validation exit-code matrix', () {
     final error = OkfFinding(
       id: OkfFindingId.okf('invalid'),
