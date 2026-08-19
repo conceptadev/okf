@@ -241,9 +241,8 @@ final class OkfReport {
 /// strictness or caller policy: only an OKF Spec error can make it false.
 final class OkfSpecValidation {
   /// Judges [report] using the fixed OKF Spec conformance rule.
-  OkfSpecValidation(OkfReport report)
-      : report = report,
-        isConformant = !report.findings.any(
+  OkfSpecValidation(this.report)
+      : isConformant = !report.findings.any(
           (finding) => finding.severity == OkfFindingSeverity.error,
         );
 
