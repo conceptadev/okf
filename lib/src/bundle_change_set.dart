@@ -84,38 +84,80 @@ final class OkfBundleChangeSet {
   final List<OkfBundleChange> changes;
 }
 
-/// Validates a change set against its prospective overlaid bundle.
+/// An immutable view of the complete candidate prepared for a bundle write.
 ///
-/// Implementations run the complete configured rule catalog against the
-/// overlay and return the same report used for ordinary bundle validation.
-typedef OkfProspectiveBundleValidator = OkfReport Function(
-  OkfBundle baseBundle,
-  OkfBundleChangeSet changes,
-);
+/// Concept values are the exact serialized Markdown bytes represented by the
+/// candidate. [toBundle] returns a detached in-memory copy for downstream
+/// inspection; changing that copy cannot change a prepared write.
+final class OkfPreparedCandidate {
+  OkfPreparedCandidate._({
+    required Map<String, String> concepts,
+    required Map<String, String> indexes,
+    required Map<String, String> logs,
+    required Set<String> assets,
+  })  : concepts = Map<String, String>.unmodifiable(concepts),
+        indexes = Map<String, String>.unmodifiable(indexes),
+        logs = Map<String, String>.unmodifiable(logs),
+        assets = Set<String>.unmodifiable(assets);
 
-/// The all-or-nothing outcome of applying an [OkfBundleChangeSet].
-sealed class OkfBundleApplyResult {
-  /// Shared by both outcomes; every result carries the report that decided it.
-  const OkfBundleApplyResult({required this.report});
+  /// Serialized concept documents keyed by bundle-relative path.
+  final Map<String, String> concepts;
 
-  /// The report produced by prospective validation.
-  final OkfReport report;
+  /// Serialized index documents keyed by bundle-relative path.
+  final Map<String, String> indexes;
+
+  /// Serialized log documents keyed by bundle-relative path.
+  final Map<String, String> logs;
+
+  /// Asset paths present in the candidate.
+  final Set<String> assets;
+
+  /// Materializes a detached bundle for read-only downstream analysis.
+  OkfBundle toBundle() => OkfBundle.fromDocuments(
+        <String, OkfDocument>{
+          for (final entry in concepts.entries)
+            entry.key: OkfDocument.parse(entry.value, sourcePath: entry.key),
+        },
+        indexes: indexes,
+        logs: logs,
+        assets: assets,
+      );
 }
 
-/// A change set that was fully committed.
-final class OkfBundleApplied extends OkfBundleApplyResult {
-  /// Creates a successful atomic-apply result.
-  OkfBundleApplied({
-    required super.report,
-    required Iterable<String> changedPaths,
-  }) : changedPaths = List<String>.unmodifiable(changedPaths);
+/// Opaque proof that an exact candidate passed OKF Spec validation.
+///
+/// Only the package's preparation implementation can construct this value.
+final class OkfPreparedChange {
+  const OkfPreparedChange._({
+    required this.candidate,
+    required this.validation,
+  });
 
-  /// Every bundle-relative path committed by the operation.
-  final List<String> changedPaths;
+  /// The immutable candidate that was validated.
+  final OkfPreparedCandidate candidate;
+
+  /// The closed OKF Spec judgment for [candidate].
+  final OkfSpecValidation validation;
 }
 
-/// A change set refused before any file was changed.
-final class OkfBundleRefused extends OkfBundleApplyResult {
-  /// Creates a refused atomic-apply result.
-  const OkfBundleRefused({required super.report});
+/// The result of preparing an [OkfBundleChangeSet].
+sealed class OkfBundlePreparation {
+  const OkfBundlePreparation._();
+}
+
+/// A candidate refused because it is not OKF Spec-conformant.
+final class OkfPreparationRefused extends OkfBundlePreparation {
+  /// Creates a refusal carrying the candidate's OKF Spec judgment.
+  const OkfPreparationRefused({required this.validation}) : super._();
+
+  /// The non-conformant OKF Spec judgment.
+  final OkfSpecValidation validation;
+}
+
+/// A candidate prepared for inspection and eventual commit.
+final class OkfPreparationReady extends OkfBundlePreparation {
+  const OkfPreparationReady._(this.prepared) : super._();
+
+  /// The opaque prepared change.
+  final OkfPreparedChange prepared;
 }

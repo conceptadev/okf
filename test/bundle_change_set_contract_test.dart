@@ -73,30 +73,9 @@ tags: [a, b]
     expect((update.frontmatterChanges['meta'] as Map)['reviewed'], isFalse);
   });
 
-  test('prospective validation receives the base bundle and change set', () {
-    final bundle = OkfBundle.fromDocuments(const <String, OkfDocument>{});
-    final changes = OkfBundleChangeSet(const <OkfBundleChange>[]);
-    OkfReport validate(
-      OkfBundle candidate,
-      OkfBundleChangeSet prospectiveChanges,
-    ) {
-      expect(candidate, same(bundle));
-      expect(prospectiveChanges, same(changes));
-      return OkfReport();
-    }
-
-    final OkfProspectiveBundleValidator prospectiveValidator = validate;
-
-    expect(prospectiveValidator(bundle, changes).findings, isEmpty);
-  });
-
-  test('atomic apply result cannot represent partial application', () {
-    final applied = OkfBundleApplied(
-      report: OkfReport(),
-      changedPaths: const <String>['concept.md', 'index.md', 'log.md'],
-    );
-    final refused = OkfBundleRefused(
-      report: OkfReport(
+  test('preparation refusal carries the closed Spec judgment', () {
+    final validation = OkfSpecValidation(
+      OkfReport(
         findings: <OkfFinding>[
           OkfFinding(
             id: OkfFindingId.okf('invalid-change'),
@@ -106,8 +85,15 @@ tags: [a, b]
         ],
       ),
     );
+    final OkfBundlePreparation result = OkfPreparationRefused(
+      validation: validation,
+    );
 
-    expect(applied.changedPaths, hasLength(3));
-    expect(refused.report.activeFindings, hasLength(1));
+    expect(result, isA<OkfPreparationRefused>());
+    expect(
+      (result as OkfPreparationRefused).validation,
+      same(validation),
+    );
+    expect(validation.isConformant, isFalse);
   });
 }

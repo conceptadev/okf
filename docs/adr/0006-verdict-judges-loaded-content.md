@@ -7,7 +7,7 @@
 
 ## Context
 
-ADR-0001 states the Verdict as `(findings, suppressions, strict) → exit code`
+ADR-0001 states the Verdict as `(findings, strict) → exit code`
 and the spec's exit-code matrix as 0 clean, 1 fail, 2 usage. Freezing the
 contract in #3 surfaced two questions the record left open: a function of
 findings cannot yield exit 2, because an unparseable invocation or an
@@ -25,9 +25,9 @@ CLI's existing behavior. The full matrix still lives in the finding module
 as `OkfExitCode`; adapters return `usage` themselves and the Verdict's
 result for everything else.
 
-Absorption ownership: the catalog sweep (#4) owns migrating validator
-diagnostics into catalog-registered rules, merging `OkfBundleLoadIssue` into
-the Report, deleting the CLI's private diagnostic, and switching adapters to
+Absorption ownership: the closed-validator sweep (#4) owns migrating validator
+diagnostics into fixed internal rules, merging `OkfBundleLoadIssue` into the
+Report, deleting the CLI's private diagnostic, and switching adapters to
 consume the Verdict. #3 ships the contract types only.
 
 ## Consequences

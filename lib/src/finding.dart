@@ -2,8 +2,8 @@
 ///
 /// Both segments are lowercase kebab-case: one or more `[a-z0-9]` runs
 /// joined by single hyphens. The grammar is frozen; it may only ever be
-/// loosened, so downstream catalogs can rely on every ID they mint today
-/// parsing tomorrow.
+/// loosened, so consumers can rely on every ID they store today parsing
+/// tomorrow.
 final class OkfFindingId {
   /// Creates and validates an identifier from separate grammar components.
   factory OkfFindingId.fromParts(String namespace, String code) =>
@@ -11,9 +11,7 @@ final class OkfFindingId {
 
   /// Creates an identifier in [baseNamespace].
   ///
-  /// That namespace is reserved for the rules this package registers.
-  /// Callers outside the package use this only to *refer* to a base finding
-  /// — in a suppression, for example — never to register a rule under it.
+  /// This package uses only this namespace for its own findings.
   factory OkfFindingId.okf(String code) =>
       OkfFindingId.fromParts(baseNamespace, code);
 
@@ -39,7 +37,7 @@ final class OkfFindingId {
     r'^([a-z0-9]+(?:-[a-z0-9]+)*)/([a-z0-9]+(?:-[a-z0-9]+)*)$',
   );
 
-  /// The catalog namespace that owns this identifier.
+  /// The namespace that owns this identifier.
   final String namespace;
 
   /// The stable code within [namespace].
@@ -142,10 +140,7 @@ final class OkfFinding {
     this.location,
   });
 
-  /// The stable identity of the rule that produced this finding.
-  ///
-  /// IDs are minted by the catalog entry that registers the rule; see
-  /// `OkfRuleCatalogEntry.finding`.
+  /// The stable identity of the condition that produced this finding.
   final OkfFindingId id;
 
   /// How this finding affects conformance.
@@ -158,9 +153,6 @@ final class OkfFinding {
   final OkfFindingLocation? location;
 
   /// Projects this finding as a JSON-compatible object.
-  ///
-  /// Suppression state is a property of the [OkfReport] that holds the
-  /// finding, so it is not part of this projection.
   Map<String, Object?> toJson() => <String, Object?>{
         'id': id.value,
         'severity': severity.wireValue,
@@ -188,27 +180,7 @@ final class OkfFinding {
   }
 }
 
-/// Caller-supplied suppression data for one finding ID.
-final class OkfFindingSuppression {
-  /// Creates a suppression with an optional rationale.
-  const OkfFindingSuppression({required this.id, this.note});
-
-  /// The finding ID to suppress.
-  final OkfFindingId id;
-
-  /// The caller's optional rationale.
-  final String? note;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is OkfFindingSuppression && id == other.id && note == other.note;
-
-  @override
-  int get hashCode => Object.hash(id, note);
-}
-
-/// Findings and their applied suppression state.
+/// The immutable findings produced while loading and validating a bundle.
 ///
 /// A report holds its findings in one canonical order ([compareFindings])
 /// regardless of which producers contributed them, so every adapter that
@@ -217,33 +189,14 @@ final class OkfFindingSuppression {
 final class OkfReport {
   /// Creates the shared report projected by every validation adapter.
   ///
-  /// [findings] are rearranged into the canonical order. When several
-  /// [suppressions] name the same ID, the first one supplies the note.
-  OkfReport({
-    Iterable<OkfFinding> findings = const <OkfFinding>[],
-    Iterable<OkfFindingSuppression> suppressions =
-        const <OkfFindingSuppression>[],
-  })  : findings = List<OkfFinding>.unmodifiable(
+  /// [findings] are rearranged into the canonical order.
+  OkfReport({Iterable<OkfFinding> findings = const <OkfFinding>[]})
+      : findings = List<OkfFinding>.unmodifiable(
           findings.toList()..sort(compareFindings),
-        ),
-        suppressions = List<OkfFindingSuppression>.unmodifiable(suppressions),
-        _suppressionsById = _indexSuppressions(suppressions);
+        );
 
-  /// Every finding, including suppressed findings, in canonical order.
+  /// Every finding in canonical order.
   final List<OkfFinding> findings;
-
-  /// Suppression data supplied by the caller.
-  final List<OkfFindingSuppression> suppressions;
-
-  final Map<OkfFindingId, OkfFindingSuppression> _suppressionsById;
-
-  /// Findings that still participate in the verdict.
-  late final List<OkfFinding> activeFindings = List<OkfFinding>.unmodifiable(
-    findings.where((finding) => !_suppressionsById.containsKey(finding.id)),
-  );
-
-  /// The number of findings matched by a suppression.
-  late final int suppressedCount = findings.length - activeFindings.length;
 
   /// The canonical ordering of report findings: path, line, column, ID,
   /// severity, message. Findings without a location sort first.
@@ -271,44 +224,34 @@ final class OkfReport {
     return comparison != 0 ? comparison : left.message.compareTo(right.message);
   }
 
-  static Map<OkfFindingId, OkfFindingSuppression> _indexSuppressions(
-    Iterable<OkfFindingSuppression> suppressions,
-  ) {
-    final byId = <OkfFindingId, OkfFindingSuppression>{};
-    for (final suppression in suppressions) {
-      byId.putIfAbsent(suppression.id, () => suppression);
-    }
-    return Map<OkfFindingId, OkfFindingSuppression>.unmodifiable(byId);
-  }
-
   /// Projects this report as deterministic, line-oriented text.
-  String toText() => findings.map(_findingToText).join('\n');
+  String toText() => findings.join('\n');
 
   /// Projects this report as a JSON-compatible object.
   Map<String, Object?> toJson() => <String, Object?>{
-        'findings': findings.map(_findingToJson).toList(growable: false),
-        'suppressed_count': suppressedCount,
+        'findings': findings.map((finding) => finding.toJson()).toList(
+              growable: false,
+            ),
       };
+}
 
-  String _findingToText(OkfFinding finding) {
-    final suppression = _suppressionsById[finding.id];
-    if (suppression == null) {
-      return '$finding';
-    }
-    final note = suppression.note;
-    return note == null
-        ? '$finding (suppressed)'
-        : '$finding (suppressed: $note)';
-  }
+/// The closed OKF Spec judgment for one complete candidate bundle.
+///
+/// Unlike an adapter verdict, Spec conformance is never affected by
+/// strictness or caller policy: only an OKF Spec error can make it false.
+final class OkfSpecValidation {
+  /// Judges [report] using the fixed OKF Spec conformance rule.
+  OkfSpecValidation(OkfReport report)
+      : report = report,
+        isConformant = !report.findings.any(
+          (finding) => finding.severity == OkfFindingSeverity.error,
+        );
 
-  Map<String, Object?> _findingToJson(OkfFinding finding) {
-    final suppression = _suppressionsById[finding.id];
-    return <String, Object?>{
-      ...finding.toJson(),
-      'suppressed': suppression != null,
-      if (suppression?.note != null) 'suppression_note': suppression!.note,
-    };
-  }
+  /// The immutable OKF Spec report.
+  final OkfReport report;
+
+  /// Whether [report] contains no OKF Spec errors.
+  final bool isConformant;
 }
 
 /// Process outcomes owned by the finding contract.
@@ -332,7 +275,7 @@ enum OkfExitCode {
   final int value;
 }
 
-/// The judgment produced from findings, suppressions, and strictness.
+/// An adapter's local exit judgment over an OKF Spec report.
 ///
 /// A verdict judges loaded content only, so [result] is always
 /// [OkfExitCode.success] or [OkfExitCode.findings]; [OkfExitCode.usage] is
@@ -344,9 +287,9 @@ final class OkfVerdict {
     required this.result,
   });
 
-  /// Judges [report] under the complete validation exit-code matrix.
+  /// Judges [report] under the adapter validation exit-code matrix.
   factory OkfVerdict.of(OkfReport report, {bool strict = false}) {
-    final fails = report.activeFindings.any(
+    final fails = report.findings.any(
       (finding) =>
           finding.severity == OkfFindingSeverity.error ||
           strict && finding.severity == OkfFindingSeverity.advisory,
@@ -358,7 +301,7 @@ final class OkfVerdict {
     );
   }
 
-  /// The report whose active findings were judged.
+  /// The report whose findings were judged.
   final OkfReport report;
 
   /// Whether advisories participate in failure.

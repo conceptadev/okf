@@ -19,13 +19,13 @@ suppression was stated nowhere.
 One module — frozen in the #3 contract — owns finding identity:
 
 - The ID grammar for every namespace: `<namespace>/<code>`. This package mints
-  only `okf/<code>`; downstream catalogs mint their own namespaces through the
-  registration seam (ADR-0002). No module outside a registering catalog mints
-  IDs.
+  only `okf/<code>`.
 - Severity, location, message.
-- The **Report**: findings plus suppressed state, one text and one JSON
-  projection. Load issues merge into the Report; parallel finding types go away.
-- The **Verdict**: `(findings, suppressions, strict) → exit code`. Every
+- The **Report**: immutable findings, with one text and one JSON projection.
+  Load issues merge into the Report; parallel finding types go away.
+- **Spec validation**: a fixed judgment in which only OKF Spec errors make a
+  candidate non-conformant.
+- The **Verdict**: `(findings, strict) → exit code`. Every
   adapter — CLI, MCP, CI — consumes the Verdict; none computes exit codes
   locally.
 
@@ -39,5 +39,6 @@ return the *same Report*, not merely the same IDs.
 - The exit-code matrix is stated and tested once, at the Verdict seam.
 - The MCP `validate` tool gains a strict parameter so an agent reproduces the
   CI gate's judgment before pushing.
+- Suppression and downstream policy stay outside this package.
 - `OkfBundleLoadIssue` and `_CliDiagnostic` are absorbed during the contract
   work.

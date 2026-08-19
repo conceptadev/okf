@@ -33,29 +33,18 @@ void main() {
     }
   });
 
-  test('report projects findings and their suppression state', () {
+  test('report projects findings deterministically', () {
     final finding = OkfFinding(
       id: OkfFindingId.parse('vendor/review-needed'),
       severity: OkfFindingSeverity.advisory,
       message: 'Review this value.',
       location: OkfFindingLocation(path: 'concept.md', line: 4, column: 2),
     );
-    final suppression = OkfFindingSuppression(
-      id: OkfFindingId.parse('vendor/review-needed'),
-      note: 'Accepted for this bundle.',
-    );
+    final report = OkfReport(findings: <OkfFinding>[finding]);
 
-    final report = OkfReport(
-      findings: <OkfFinding>[finding],
-      suppressions: <OkfFindingSuppression>[suppression],
-    );
-
-    expect(report.suppressedCount, 1);
-    expect(report.activeFindings, isEmpty);
     expect(
       report.toText(),
-      'concept.md:4:2: advisory vendor/review-needed: Review this value. '
-      '(suppressed: Accepted for this bundle.)',
+      'concept.md:4:2: advisory vendor/review-needed: Review this value.',
     );
     expect(report.toJson(), <String, Object?>{
       'findings': <Object?>[
@@ -68,15 +57,12 @@ void main() {
             'line': 4,
             'column': 2,
           },
-          'suppressed': true,
-          'suppression_note': 'Accepted for this bundle.',
         },
       ],
-      'suppressed_count': 1,
     });
   });
 
-  test('findings, locations, and suppressions are values', () {
+  test('findings and locations are values', () {
     OkfFinding finding({String path = 'a.md', int? line, int? column}) =>
         OkfFinding(
           id: OkfFindingId.okf('sample'),
@@ -90,15 +76,6 @@ void main() {
         finding(line: 3, column: 1).hashCode);
     expect(finding(line: 3), isNot(finding(line: 4)));
     expect(finding(path: 'b.md'), isNot(finding()));
-    expect(
-      OkfFindingSuppression(id: OkfFindingId.okf('sample'), note: 'n'),
-      OkfFindingSuppression(id: OkfFindingId.okf('sample'), note: 'n'),
-    );
-    expect(
-      OkfFindingSuppression(id: OkfFindingId.okf('sample')),
-      isNot(OkfFindingSuppression(id: OkfFindingId.okf('sample'), note: 'n')),
-    );
-
     expect('${finding()}', 'a.md: error okf/sample: Sample.');
     expect('${finding(line: 3)}', 'a.md:3: error okf/sample: Sample.');
     expect('${finding(line: 3, column: 1)}',
@@ -170,7 +147,30 @@ void main() {
     expect(reversed.toText(), report.toText());
     expect(reversed.toJson(), report.toJson());
     expect(() => report.findings.clear(), throwsUnsupportedError);
-    expect(() => report.activeFindings.clear(), throwsUnsupportedError);
+  });
+
+  test('Spec conformance depends only on OKF Spec errors', () {
+    final advisory = OkfFinding(
+      id: OkfFindingId.okf('review'),
+      severity: OkfFindingSeverity.advisory,
+      message: 'Review.',
+    );
+    final error = OkfFinding(
+      id: OkfFindingId.okf('invalid'),
+      severity: OkfFindingSeverity.error,
+      message: 'Invalid.',
+    );
+
+    final advisoryOnly = OkfSpecValidation(
+      OkfReport(findings: <OkfFinding>[advisory]),
+    );
+    final invalid = OkfSpecValidation(
+      OkfReport(findings: <OkfFinding>[advisory, error]),
+    );
+
+    expect(advisoryOnly.isConformant, isTrue);
+    expect(invalid.isConformant, isFalse);
+    expect(advisoryOnly.report.findings, <OkfFinding>[advisory]);
   });
 
   test('verdict owns the validation exit-code matrix', () {
@@ -197,17 +197,6 @@ void main() {
         strict: true,
       ).exitCode,
       1,
-    );
-    expect(
-      OkfVerdict.of(
-        OkfReport(
-          findings: <OkfFinding>[error],
-          suppressions: <OkfFindingSuppression>[
-            OkfFindingSuppression(id: OkfFindingId.okf('invalid')),
-          ],
-        ),
-      ).exitCode,
-      0,
     );
     expect(OkfExitCode.usage.value, 2);
   });
