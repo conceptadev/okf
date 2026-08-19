@@ -97,6 +97,22 @@ void main() {
     expect(OkfFindingSeverity.advisory.wireValue, 'advisory');
   });
 
+  test('finding locations enforce their canonical shape at runtime', () {
+    expect(() => OkfFindingLocation(path: ''), throwsArgumentError);
+    expect(
+      () => OkfFindingLocation(path: 'concept.md', line: 0),
+      throwsArgumentError,
+    );
+    expect(
+      () => OkfFindingLocation(path: 'concept.md', column: 1),
+      throwsArgumentError,
+    );
+    expect(
+      () => OkfFindingLocation(path: 'concept.md', line: 1, column: 0),
+      throwsArgumentError,
+    );
+  });
+
   test('reports hold findings in one canonical order', () {
     OkfFinding finding(
       String id,

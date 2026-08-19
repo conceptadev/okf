@@ -77,17 +77,32 @@ final class OkfFindingLocation {
   /// Creates a bundle-relative source location.
   ///
   /// [line] and [column] are one-based when present, and a column requires
-  /// a line; violations are rejected in development builds.
-  const OkfFindingLocation({
+  /// a line.
+  factory OkfFindingLocation({
+    required String path,
+    int? line,
+    int? column,
+  }) {
+    if (path.isEmpty) {
+      throw ArgumentError.value(path, 'path', 'must not be empty');
+    }
+    if (line != null && line <= 0) {
+      throw ArgumentError.value(line, 'line', 'must be one-based');
+    }
+    if (column != null && column <= 0) {
+      throw ArgumentError.value(column, 'column', 'must be one-based');
+    }
+    if (column != null && line == null) {
+      throw ArgumentError.value(column, 'column', 'requires a source line');
+    }
+    return OkfFindingLocation._(path: path, line: line, column: column);
+  }
+
+  const OkfFindingLocation._({
     required this.path,
-    this.line,
-    this.column,
-  })  : assert(line == null || line > 0, 'line must be one-based'),
-        assert(column == null || column > 0, 'column must be one-based'),
-        assert(
-          column == null || line != null,
-          'a column requires a source line',
-        );
+    required this.line,
+    required this.column,
+  });
 
   /// The logical, bundle-relative path.
   final String path;
