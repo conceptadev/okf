@@ -120,6 +120,59 @@ void main() {
     expect(OkfFindingSeverity.advisory.wireValue, 'advisory');
   });
 
+  test('reports hold findings in one canonical order', () {
+    OkfFinding finding(
+      String id,
+      String message, {
+      String? path,
+      int? line,
+      int? column,
+      OkfFindingSeverity severity = OkfFindingSeverity.error,
+    }) =>
+        OkfFinding(
+          id: OkfFindingId.parse(id),
+          severity: severity,
+          message: message,
+          location: path == null
+              ? null
+              : OkfFindingLocation(path: path, line: line, column: column),
+        );
+    final findings = <OkfFinding>[
+      finding('okf/b-rule', 'Late file.', path: 'b.md'),
+      finding('okf/no-location', 'No location.'),
+      finding('okf/z-rule', 'Early line.', path: 'a.md', line: 2),
+      finding('okf/a-rule', 'Later line.', path: 'a.md', line: 9),
+      finding('okf/a-rule', 'Same spot, later ID.', path: 'a.md', line: 2),
+      finding(
+        'okf/a-rule',
+        'Same spot, advisory.',
+        path: 'a.md',
+        line: 2,
+        severity: OkfFindingSeverity.advisory,
+      ),
+    ];
+
+    final report = OkfReport(findings: findings);
+    expect(
+      report.findings.map((item) => item.message),
+      orderedEquals(<String>[
+        'No location.',
+        'Same spot, later ID.',
+        'Same spot, advisory.',
+        'Early line.',
+        'Later line.',
+        'Late file.',
+      ]),
+    );
+    // Producer order does not leak into either projection.
+    final reversed = OkfReport(findings: findings.reversed);
+    expect(reversed.findings, report.findings);
+    expect(reversed.toText(), report.toText());
+    expect(reversed.toJson(), report.toJson());
+    expect(() => report.findings.clear(), throwsUnsupportedError);
+    expect(() => report.activeFindings.clear(), throwsUnsupportedError);
+  });
+
   test('verdict owns the validation exit-code matrix', () {
     final error = OkfFinding(
       id: OkfFindingId.okf('invalid'),

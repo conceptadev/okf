@@ -209,39 +209,77 @@ final class OkfFindingSuppression {
 }
 
 /// Findings and their applied suppression state.
+///
+/// A report holds its findings in one canonical order ([compareFindings])
+/// regardless of which producers contributed them, so every adapter that
+/// projects the same findings emits the same sequence. Merging reports is
+/// constructing one from their concatenated findings.
 final class OkfReport {
   /// Creates the shared report projected by every validation adapter.
+  ///
+  /// [findings] are rearranged into the canonical order. When several
+  /// [suppressions] name the same ID, the first one supplies the note.
   OkfReport({
     Iterable<OkfFinding> findings = const <OkfFinding>[],
     Iterable<OkfFindingSuppression> suppressions =
         const <OkfFindingSuppression>[],
-  })  : findings = List<OkfFinding>.unmodifiable(findings),
-        suppressions = List<OkfFindingSuppression>.unmodifiable(suppressions) {
-    for (final suppression in this.suppressions) {
-      _suppressionsById.putIfAbsent(suppression.id, () => suppression);
-    }
-  }
+  })  : findings = List<OkfFinding>.unmodifiable(
+          findings.toList()..sort(compareFindings),
+        ),
+        suppressions = List<OkfFindingSuppression>.unmodifiable(suppressions),
+        _suppressionsById = _indexSuppressions(suppressions);
 
-  /// Every finding, including suppressed findings, in producer order.
+  /// Every finding, including suppressed findings, in canonical order.
   final List<OkfFinding> findings;
 
   /// Suppression data supplied by the caller.
   final List<OkfFindingSuppression> suppressions;
 
-  final Map<OkfFindingId, OkfFindingSuppression> _suppressionsById =
-      <OkfFindingId, OkfFindingSuppression>{};
+  final Map<OkfFindingId, OkfFindingSuppression> _suppressionsById;
 
   /// Findings that still participate in the verdict.
-  List<OkfFinding> get activeFindings => List<OkfFinding>.unmodifiable(
-        findings.where(
-          (finding) => !_suppressionsById.containsKey(finding.id),
-        ),
-      );
+  late final List<OkfFinding> activeFindings = List<OkfFinding>.unmodifiable(
+    findings.where((finding) => !_suppressionsById.containsKey(finding.id)),
+  );
 
   /// The number of findings matched by a suppression.
-  int get suppressedCount => findings
-      .where((finding) => _suppressionsById.containsKey(finding.id))
-      .length;
+  late final int suppressedCount = findings.length - activeFindings.length;
+
+  /// The canonical ordering of report findings: path, line, column, ID,
+  /// severity, message. Findings without a location sort first.
+  static int compareFindings(OkfFinding left, OkfFinding right) {
+    var comparison =
+        (left.location?.path ?? '').compareTo(right.location?.path ?? '');
+    if (comparison != 0) {
+      return comparison;
+    }
+    comparison =
+        (left.location?.line ?? 0).compareTo(right.location?.line ?? 0);
+    if (comparison != 0) {
+      return comparison;
+    }
+    comparison =
+        (left.location?.column ?? 0).compareTo(right.location?.column ?? 0);
+    if (comparison != 0) {
+      return comparison;
+    }
+    comparison = left.id.value.compareTo(right.id.value);
+    if (comparison != 0) {
+      return comparison;
+    }
+    comparison = left.severity.index.compareTo(right.severity.index);
+    return comparison != 0 ? comparison : left.message.compareTo(right.message);
+  }
+
+  static Map<OkfFindingId, OkfFindingSuppression> _indexSuppressions(
+    Iterable<OkfFindingSuppression> suppressions,
+  ) {
+    final byId = <OkfFindingId, OkfFindingSuppression>{};
+    for (final suppression in suppressions) {
+      byId.putIfAbsent(suppression.id, () => suppression);
+    }
+    return Map<OkfFindingId, OkfFindingSuppression>.unmodifiable(byId);
+  }
 
   /// Projects this report as deterministic, line-oriented text.
   String toText() => findings.map(_findingToText).join('\n');
