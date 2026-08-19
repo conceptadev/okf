@@ -1,6 +1,6 @@
 # ADR-0001: One Finding contract owns finding identity, the Report, and the Verdict
 
-- Status: accepted
+- Status: accepted, amended by [ADR-0006](0006-verdict-judges-loaded-content.md)
 - Date: 2026-08-14
 - Issues: [#3](https://github.com/conceptadev/okf/issues/3), consumed by every later slice
 
@@ -41,16 +41,3 @@ return the *same Report*, not merely the same IDs.
   CI gate's judgment before pushing.
 - `OkfBundleLoadIssue` and `_CliDiagnostic` are absorbed during the contract
   work.
-
-## Clarification (2026-08-14)
-
-The Verdict judges loaded content only: it yields exit 0 or 1. Exit 2
-(usage) is an adapter decision made before a Report exists — an
-unparseable invocation or an unreadable bundle source. Malformed content
-inside a loadable bundle merges into the Report as findings and exits 1,
-matching the CLI's existing behavior.
-
-Absorption ownership: the catalog sweep (#4) owns migrating validator
-diagnostics into catalog-registered rules, merging `OkfBundleLoadIssue`
-into the Report, deleting the CLI's private diagnostic, and switching
-adapters to consume the Verdict.

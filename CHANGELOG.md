@@ -4,6 +4,8 @@
   verdict, exit codes), the open rule catalog registration seam, the
   `OkfBundleChangeSet` contract with sealed atomic apply results, and the
   index/log entry model.
+- Pin the finding ID grammar to lowercase kebab-case `<namespace>/<code>`
+  and hold `OkfReport` findings in one canonical order.
 - Move `OkfIndexEntry` into the index/log model and add value equality to
   index and log entries.
 

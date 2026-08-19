@@ -42,7 +42,10 @@ final class OkfLogEntry {
     required this.description,
   });
 
-  /// The entry date in `YYYY-MM-DD` form.
+  /// The date heading text as written, `YYYY-MM-DD` when well-formed.
+  ///
+  /// Held as text so a parsed log round-trips byte-for-byte and a malformed
+  /// heading stays representable for the rules that report it.
   final String date;
 
   /// The producer-defined action label.

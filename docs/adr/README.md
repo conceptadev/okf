@@ -17,3 +17,4 @@ behaviour per unit of interface a caller must learn.
 | [0003](0003-bundle-changeset-single-write-path.md) | BundleChangeSet is the single write path; MCP verbs are thin adapters |
 | [0004](0004-index-log-model-single-owner.md) | One module owns the index/log entry format |
 | [0005](0005-single-graph-query-interface.md) | One graph filter vocabulary; CLI and MCP are two adapters |
+| [0006](0006-verdict-judges-loaded-content.md) | The Verdict judges loaded content; usage exits are adapter decisions |

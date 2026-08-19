@@ -6,6 +6,7 @@ import 'json_data.dart';
 
 /// A prospective mutation included in an [OkfBundleChangeSet].
 sealed class OkfBundleChange {
+  /// Shared by every change kind; the sealed hierarchy is closed here.
   const OkfBundleChange();
 }
 
@@ -94,6 +95,7 @@ typedef OkfProspectiveBundleValidator = OkfReport Function(
 
 /// The all-or-nothing outcome of applying an [OkfBundleChangeSet].
 sealed class OkfBundleApplyResult {
+  /// Shared by both outcomes; every result carries the report that decided it.
   const OkfBundleApplyResult({required this.report});
 
   /// The report produced by prospective validation.
