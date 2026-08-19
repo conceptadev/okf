@@ -6,6 +6,11 @@ import 'json_data.dart';
 typedef OkfRuleParameters = Map<String, Object?>;
 
 /// Executes one rule against a loaded bundle.
+///
+/// A rule mints its findings through its own [OkfRuleCatalogEntry.finding],
+/// so every finding carries the registering entry's ID. Entries whose
+/// findings arise before a bundle exists — load-time failures — register
+/// so the ID is catalogued, and return nothing from their run.
 typedef OkfRuleRun = Iterable<OkfFinding> Function(
   OkfBundle bundle,
   OkfRuleParameters parameters,
@@ -39,7 +44,7 @@ final class OkfRuleCatalogEntry {
   /// The catalog owner responsible for the rule.
   final String owner;
 
-  /// The severity used when the rule does not override it.
+  /// The severity [finding] uses when the rule does not override it.
   final OkfFindingSeverity defaultSeverity;
 
   /// The JSON-compatible schema for accepted [run] parameters.
@@ -49,9 +54,29 @@ final class OkfRuleCatalogEntry {
 
   /// The rule execution function.
   final OkfRuleRun run;
+
+  /// Mints a finding carrying this entry's [id].
+  ///
+  /// This is the only intended way to produce a finding: the registering
+  /// entry owns the ID, and [severity] defaults to [defaultSeverity].
+  OkfFinding finding({
+    required String message,
+    OkfFindingLocation? location,
+    OkfFindingSeverity? severity,
+  }) =>
+      OkfFinding(
+        id: id,
+        severity: severity ?? defaultSeverity,
+        message: message,
+        location: location,
+      );
 }
 
 /// An open registry of base and downstream rule catalog entries.
+///
+/// Any valid namespace registers through the same [register] seam. The
+/// [OkfFindingId.baseNamespace] is reserved for this package's own rules by
+/// convention; downstream catalogs mint their own namespaces.
 final class OkfRuleCatalog {
   /// Creates a catalog and registers [entries] in iteration order.
   OkfRuleCatalog([
