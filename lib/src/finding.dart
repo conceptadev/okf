@@ -1,31 +1,43 @@
 /// A stable finding identifier in `<namespace>/<code>` form.
+///
+/// Both segments are lowercase kebab-case: one or more `[a-z0-9]` runs
+/// joined by single hyphens. The grammar is frozen; it may only ever be
+/// loosened, so downstream catalogs can rely on every ID they mint today
+/// parsing tomorrow.
 final class OkfFindingId {
   /// Creates and validates an identifier from separate grammar components.
   factory OkfFindingId.fromParts(String namespace, String code) =>
       OkfFindingId.parse('$namespace/$code');
 
-  /// Creates an identifier in the namespace reserved for base OKF rules.
-  factory OkfFindingId.okf(String code) => OkfFindingId.parse('okf/$code');
+  /// Creates an identifier in [baseNamespace].
+  ///
+  /// That namespace is reserved for the rules this package registers.
+  /// Callers outside the package use this only to *refer* to a base finding
+  /// — in a suppression, for example — never to register a rule under it.
+  factory OkfFindingId.okf(String code) =>
+      OkfFindingId.fromParts(baseNamespace, code);
 
   /// Parses and validates a namespaced identifier.
   factory OkfFindingId.parse(String value) {
-    final separator = value.indexOf('/');
-    if (separator <= 0 ||
-        separator != value.lastIndexOf('/') ||
-        separator == value.length - 1 ||
-        value.runes.any(_isWhitespaceOrControl)) {
+    final match = _grammar.firstMatch(value);
+    if (match == null) {
       throw FormatException(
-        'Finding IDs must use the <namespace>/<code> grammar',
+        'Finding IDs must use the <namespace>/<code> grammar, each segment '
+        'lowercase kebab-case',
         value,
       );
     }
-    return OkfFindingId._(
-      value.substring(0, separator),
-      value.substring(separator + 1),
-    );
+    return OkfFindingId._(match[1]!, match[2]!);
   }
 
   const OkfFindingId._(this.namespace, this.code);
+
+  /// The namespace in which this package mints its own finding IDs.
+  static const String baseNamespace = 'okf';
+
+  static final RegExp _grammar = RegExp(
+    r'^([a-z0-9]+(?:-[a-z0-9]+)*)/([a-z0-9]+(?:-[a-z0-9]+)*)$',
+  );
 
   /// The catalog namespace that owns this identifier.
   final String namespace;
@@ -277,6 +289,3 @@ final class OkfVerdict {
   /// The integer returned by command and automation adapters.
   int get exitCode => result.value;
 }
-
-bool _isWhitespaceOrControl(int rune) =>
-    rune <= 0x20 || rune >= 0x7f && rune <= 0x9f;

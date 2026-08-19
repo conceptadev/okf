@@ -8,6 +8,8 @@ void main() {
       OkfFindingId.fromParts('vendor', 'rule-code'),
     );
     expect(OkfFindingId.okf('missing-type').value, 'okf/missing-type');
+    expect(OkfFindingId.okf('x').namespace, OkfFindingId.baseNamespace);
+    expect(OkfFindingId.parse('v2/rule-0').code, 'rule-0');
 
     for (final invalid in <String>[
       'missing-namespace',
@@ -15,6 +17,13 @@ void main() {
       'missing-code/',
       'too/many/segments',
       'white space/code',
+      'Vendor/rule',
+      'vendor/Rule_Code',
+      'vendor/rule.code',
+      'vendor/-leading-hyphen',
+      'vendor/double--hyphen',
+      'trailing-/code',
+      'vendor/non-ascii-é',
     ]) {
       expect(
         () => OkfFindingId.parse(invalid),
