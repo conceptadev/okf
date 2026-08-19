@@ -44,6 +44,35 @@ void main() {
     );
   });
 
+  test('update changes freeze parsed frontmatter, not only literals', () {
+    final parsed = OkfDocument.parse('''
+---
+type: Reference
+meta: {reviewed: false}
+tags: [a, b]
+---
+''');
+    final update = OkfUpdateConceptChange(
+      id: OkfConceptId('existing'),
+      frontmatterChanges: parsed.frontmatter,
+    );
+
+    expect(
+      () => (update.frontmatterChanges['meta'] as Map)['reviewed'] = true,
+      throwsUnsupportedError,
+    );
+    expect(
+      () => (update.frontmatterChanges['tags'] as List).add('c'),
+      throwsUnsupportedError,
+    );
+    expect(update.frontmatterChanges['meta'], <Object?, Object?>{
+      'reviewed': false,
+    });
+    // The caller's parsed map remains untouched.
+    (parsed.frontmatter['meta'] as Map)['reviewed'] = true;
+    expect((update.frontmatterChanges['meta'] as Map)['reviewed'], isFalse);
+  });
+
   test('prospective validation receives the base bundle and change set', () {
     final bundle = OkfBundle.fromDocuments(const <String, OkfDocument>{});
     final changes = OkfBundleChangeSet(const <OkfBundleChange>[]);
