@@ -10,20 +10,26 @@ import 'bundle_path.dart';
 final class OkfConceptId implements Comparable<OkfConceptId> {
   /// Creates an ID from a bundle-relative path without a `.md` suffix.
   factory OkfConceptId(String value) {
-    final validated = _validate(value, documentPath: false);
-    return OkfConceptId._(validated);
+    validateBundlePath(value);
+    if (value.endsWith('.md')) {
+      throw FormatException(
+        'A concept ID must not include the .md suffix',
+        value,
+      );
+    }
+    return OkfConceptId._(value);
   }
 
   const OkfConceptId._(this.value);
 
   /// Creates an ID from a bundle-relative concept document path.
   factory OkfConceptId.fromDocumentPath(String path) {
-    final validatedPath = _validate(path, documentPath: true);
-    if (!validatedPath.endsWith('.md')) {
+    validateBundlePath(path);
+    if (!path.endsWith('.md')) {
       throw FormatException('Concept document paths must end in .md', path);
     }
 
-    final basename = p.posix.basename(validatedPath);
+    final basename = p.posix.basename(path);
     if (basename == 'index.md' || basename == 'log.md') {
       throw FormatException(
         'Reserved OKF documents do not have concept IDs',
@@ -31,7 +37,7 @@ final class OkfConceptId implements Comparable<OkfConceptId> {
       );
     }
 
-    return OkfConceptId(validatedPath.substring(0, validatedPath.length - 3));
+    return OkfConceptId(path.substring(0, path.length - 3));
   }
 
   /// The validated bundle-relative ID, retained without normalization.
@@ -71,15 +77,4 @@ final class OkfConceptId implements Comparable<OkfConceptId> {
   static final RegExp _portableAsciiSegment = RegExp(
     r'^[A-Za-z0-9_][A-Za-z0-9_.-]*$',
   );
-
-  static String _validate(String value, {required bool documentPath}) {
-    validateBundlePath(value);
-    if (!documentPath && value.endsWith('.md')) {
-      throw FormatException(
-        'A concept ID must not include the .md suffix',
-        value,
-      );
-    }
-    return value;
-  }
 }

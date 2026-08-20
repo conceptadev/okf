@@ -48,7 +48,9 @@ final class OkfBundle {
     final validatedAssets = SplayTreeSet<String>();
     for (final path in assets) {
       final validated = validateBundlePath(path);
-      if (_isReservedMarkdownPath(validated) || validated.endsWith('.md')) {
+      // `index.md` and `log.md` are covered by the suffix: every reserved
+      // name ends in `.md`.
+      if (validated.endsWith('.md')) {
         throw ArgumentError.value(
           path,
           'assets',
@@ -147,10 +149,5 @@ final class OkfBundle {
       result[validated] = entry.value;
     }
     return result;
-  }
-
-  static bool _isReservedMarkdownPath(String path) {
-    final basename = p.posix.basename(path);
-    return basename == 'index.md' || basename == 'log.md';
   }
 }
