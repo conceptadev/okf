@@ -7,6 +7,11 @@
   and hold `OkfReport` findings in one canonical order.
 - Move `OkfIndexEntry` into the index/log model and add value equality to
   index and log entries.
+- Enforce one non-normalizing POSIX grammar across bundle inventories, concept
+  IDs, and file-system adapters.
+- Snapshot bundle change descriptions, validate relationship names and YAML
+  values, and escape control characters in one-line finding text while
+  retaining raw locations and messages in JSON.
 
 ## 0.1.2
 

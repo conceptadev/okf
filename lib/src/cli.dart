@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:args/args.dart';
 import 'package:path/path.dart' as p;
 
+import 'control_characters.dart';
 import 'diagnostic.dart';
 import 'document.dart';
 import 'graph.dart';
@@ -595,17 +596,4 @@ String _fileSystemMessage(FileSystemException error) {
   return _terminalSafe(message);
 }
 
-String _terminalSafe(String value) {
-  final output = StringBuffer();
-  for (final rune in value.runes) {
-    if (rune < 0x20 || rune >= 0x7f && rune <= 0x9f) {
-      output
-        ..write(r'\u{')
-        ..write(rune.toRadixString(16).padLeft(4, '0'))
-        ..write('}');
-    } else {
-      output.writeCharCode(rune);
-    }
-  }
-  return output.toString();
-}
+String _terminalSafe(String value) => escapeControlCharacters(value);

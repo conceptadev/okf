@@ -12,14 +12,21 @@ sealed class OkfBundleChange {
 
 /// A request to create a concept from a complete document.
 final class OkfCreateConceptChange extends OkfBundleChange {
-  /// Creates a concept-change description.
-  const OkfCreateConceptChange({required this.id, required this.document});
+  /// Creates a concept-change description, snapshotting [document].
+  OkfCreateConceptChange({required this.id, required OkfDocument document})
+      : _serializedDocument = document.serialize();
 
   /// The ID for the new concept.
   final OkfConceptId id;
 
-  /// The prospective concept document.
-  final OkfDocument document;
+  final String _serializedDocument;
+
+  /// A detached copy of the prospective concept document.
+  ///
+  /// Each access returns a newly parsed document, so mutations made while
+  /// inspecting one copy cannot change this description.
+  OkfDocument get document =>
+      OkfDocument.parse(_serializedDocument, sourcePath: id.documentPath);
 }
 
 /// A request to update the managed portions of an existing concept.
@@ -46,7 +53,30 @@ final class OkfUpdateConceptChange extends OkfBundleChange {
 /// A request to add a typed relationship between concepts.
 final class OkfLinkConceptsChange extends OkfBundleChange {
   /// Creates a link-change description.
-  const OkfLinkConceptsChange({
+  ///
+  /// Surrounding whitespace is removed from [relationship], whose resulting
+  /// value must not be empty.
+  factory OkfLinkConceptsChange({
+    required OkfConceptId source,
+    required OkfConceptId target,
+    required String relationship,
+  }) {
+    final trimmedRelationship = relationship.trim();
+    if (trimmedRelationship.isEmpty) {
+      throw ArgumentError.value(
+        relationship,
+        'relationship',
+        'must not be empty',
+      );
+    }
+    return OkfLinkConceptsChange._(
+      source: source,
+      target: target,
+      relationship: trimmedRelationship,
+    );
+  }
+
+  const OkfLinkConceptsChange._({
     required this.source,
     required this.target,
     required this.relationship,

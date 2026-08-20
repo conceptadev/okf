@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'package:path/path.dart' as p;
 
+import 'bundle_path.dart';
 import 'concept_id.dart';
 import 'document.dart';
 
@@ -36,25 +37,25 @@ final class OkfBundle {
         throw ArgumentError.value(
           entry.key,
           'documents',
-          'Duplicate normalized concept path',
+          'Duplicate concept path',
         );
       }
       concepts[id] = entry.value;
     }
 
-    final normalizedIndexes = _normalizeReservedFiles(indexes, 'index.md');
-    final normalizedLogs = _normalizeReservedFiles(logs, 'log.md');
-    final normalizedAssets = SplayTreeSet<String>();
+    final validatedIndexes = _validateReservedFiles(indexes, 'index.md');
+    final validatedLogs = _validateReservedFiles(logs, 'log.md');
+    final validatedAssets = SplayTreeSet<String>();
     for (final path in assets) {
-      final normalized = _normalizeBundlePath(path);
-      if (_isReservedMarkdownPath(normalized) || normalized.endsWith('.md')) {
+      final validated = validateBundlePath(path);
+      if (_isReservedMarkdownPath(validated) || validated.endsWith('.md')) {
         throw ArgumentError.value(
           path,
           'assets',
           'Markdown files must be supplied as documents, indexes, or logs',
         );
       }
-      normalizedAssets.add(normalized);
+      validatedAssets.add(validated);
     }
 
     final occupied = <String>{};
@@ -62,9 +63,9 @@ final class OkfBundle {
       occupied.add(id.documentPath);
     }
     for (final path in <String>[
-      ...normalizedIndexes.keys,
-      ...normalizedLogs.keys,
-      ...normalizedAssets,
+      ...validatedIndexes.keys,
+      ...validatedLogs.keys,
+      ...validatedAssets,
     ]) {
       if (!occupied.add(path)) {
         throw ArgumentError.value(path, 'path', 'Duplicate bundle path');
@@ -73,9 +74,9 @@ final class OkfBundle {
 
     return OkfBundle._(
       concepts: SplayTreeMap<OkfConceptId, OkfDocument>.of(concepts),
-      indexFiles: normalizedIndexes,
-      logFiles: normalizedLogs,
-      assetPaths: normalizedAssets,
+      indexFiles: validatedIndexes,
+      logFiles: validatedLogs,
+      assetPaths: validatedAssets,
     );
   }
 
@@ -116,34 +117,34 @@ final class OkfBundle {
   /// Whether a bundle-relative file path is present in the inventory.
   bool containsPath(String path) {
     try {
-      return allPaths.contains(_normalizeBundlePath(path));
+      return allPaths.contains(validateBundlePath(path));
     } on FormatException {
       return false;
     }
   }
 
-  static SplayTreeMap<String, String> _normalizeReservedFiles(
+  static SplayTreeMap<String, String> _validateReservedFiles(
     Map<String, String> files,
     String expectedName,
   ) {
     final result = SplayTreeMap<String, String>();
     for (final entry in files.entries) {
-      final normalized = _normalizeBundlePath(entry.key);
-      if (p.posix.basename(normalized) != expectedName) {
+      final validated = validateBundlePath(entry.key);
+      if (p.posix.basename(validated) != expectedName) {
         throw ArgumentError.value(
           entry.key,
           expectedName == 'index.md' ? 'indexes' : 'logs',
           'Expected a path ending in $expectedName',
         );
       }
-      if (result.containsKey(normalized)) {
+      if (result.containsKey(validated)) {
         throw ArgumentError.value(
           entry.key,
           'files',
-          'Duplicate normalized reserved path',
+          'Duplicate reserved path',
         );
       }
-      result[normalized] = entry.value;
+      result[validated] = entry.value;
     }
     return result;
   }
@@ -151,32 +152,5 @@ final class OkfBundle {
   static bool _isReservedMarkdownPath(String path) {
     final basename = p.posix.basename(path);
     return basename == 'index.md' || basename == 'log.md';
-  }
-
-  static String _normalizeBundlePath(String value) {
-    if (value.isEmpty || value.startsWith('/') || value.contains(r'\')) {
-      throw FormatException(
-        'Bundle paths must be non-empty, relative POSIX paths',
-        value,
-      );
-    }
-    final segments = value.split('/');
-    if (segments.any(
-      (segment) => segment.isEmpty || segment == '.' || segment == '..',
-    )) {
-      throw FormatException(
-        'Bundle paths cannot contain empty, . or .. segments',
-        value,
-      );
-    }
-    if (segments.any(
-      (segment) => segment.runes.any((rune) => rune < 0x20 || rune == 0x7f),
-    )) {
-      throw FormatException(
-        'Bundle paths cannot contain control characters',
-        value,
-      );
-    }
-    return segments.join('/');
   }
 }

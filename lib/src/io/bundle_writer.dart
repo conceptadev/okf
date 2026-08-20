@@ -6,6 +6,7 @@ import 'dart:math';
 
 import 'package:path/path.dart' as p;
 
+import '../bundle_path.dart';
 import '../document.dart';
 
 /// The outcome of writing or checking a set of bundle files.
@@ -58,21 +59,21 @@ final class OkfBundleWriter {
       rootPath,
       createIfMissing: !checkOnly,
     );
-    final normalizedFiles = SplayTreeMap<String, String>();
+    final validatedFiles = SplayTreeMap<String, String>();
     for (final entry in files.entries) {
-      final relativePath = _normalizeRelativePath(entry.key);
-      if (normalizedFiles.containsKey(relativePath)) {
+      final relativePath = _validateRelativePath(entry.key);
+      if (validatedFiles.containsKey(relativePath)) {
         throw ArgumentError.value(
           entry.key,
           'files',
-          'Multiple paths normalize to $relativePath',
+          'Duplicate bundle path: $relativePath',
         );
       }
-      normalizedFiles[relativePath] = entry.value;
+      validatedFiles[relativePath] = entry.value;
     }
 
     final changed = <String>[];
-    for (final entry in normalizedFiles.entries) {
+    for (final entry in validatedFiles.entries) {
       final destination = File(
         p.joinAll(<String>[root.path, ...p.posix.split(entry.key)]),
       );
@@ -222,34 +223,23 @@ final class OkfBundleWriter {
   }
 }
 
-String _normalizeRelativePath(String value) {
-  if (value.isEmpty ||
-      p.posix.isAbsolute(value) ||
-      p.windows.isAbsolute(value) ||
-      value.contains(r'\')) {
+String _validateRelativePath(String value) {
+  if (p.windows.isAbsolute(value)) {
     throw ArgumentError.value(
       value,
       'relativePath',
       'Path must be a non-empty relative POSIX path',
     );
   }
-
-  final segments = value.split('/');
-  if (segments.isEmpty ||
-      segments.any(
-        (segment) =>
-            segment.isEmpty ||
-            segment == '.' ||
-            segment == '..' ||
-            segment.runes.any((rune) => rune < 0x20 || rune == 0x7f),
-      )) {
+  try {
+    return validateBundlePath(value);
+  } on FormatException catch (error) {
     throw ArgumentError.value(
       value,
       'relativePath',
-      'Path cannot contain empty, dot, traversal, or control segments',
+      error.message,
     );
   }
-  return segments.join('/');
 }
 
 bool _bytesEqual(List<int>? left, List<int> right) {

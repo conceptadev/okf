@@ -73,6 +73,113 @@ tags: [a, b]
     expect((update.frontmatterChanges['meta'] as Map)['reviewed'], isFalse);
   });
 
+  test('create changes snapshot source and inspected documents', () {
+    final nested = <String, Object?>{'reviewed': false};
+    final source = OkfDocument(
+      frontmatter: <String, Object?>{'type': 'Reference', 'meta': nested},
+      body: 'Original body.',
+    );
+    final change = OkfCreateConceptChange(
+      id: OkfConceptId('new-concept'),
+      document: source,
+    );
+
+    nested['reviewed'] = true;
+    source.frontmatter['title'] = 'Mutated';
+    final inspected = change.document;
+    expect(inspected.frontmatter['title'], isNull);
+    expect((inspected.frontmatter['meta'] as Map)['reviewed'], isFalse);
+    expect(inspected.body, 'Original body.\n');
+
+    inspected.frontmatter['title'] = 'Inspection mutation';
+    (inspected.frontmatter['meta'] as Map)['reviewed'] = true;
+    final inspectedAgain = change.document;
+    expect(inspectedAgain, isNot(same(inspected)));
+    expect(inspectedAgain.frontmatter['title'], isNull);
+    expect((inspectedAgain.frontmatter['meta'] as Map)['reviewed'], isFalse);
+  });
+
+  test('update changes snapshot nested maps and every iterable', () {
+    final nestedMap = <Object?, Object?>{'enabled': true};
+    final nestedList = <Object?>['one'];
+    final nestedSet = <Object?>{'alpha', 'beta'};
+    final update = OkfUpdateConceptChange(
+      id: OkfConceptId('existing'),
+      frontmatterChanges: <String, Object?>{
+        'map': nestedMap,
+        'list': nestedList,
+        'set': nestedSet,
+      },
+    );
+
+    nestedMap['enabled'] = false;
+    nestedList.add('two');
+    nestedSet.add('gamma');
+    expect(update.frontmatterChanges['map'], <Object?, Object?>{
+      'enabled': true,
+    });
+    expect(update.frontmatterChanges['list'], <Object?>['one']);
+    expect(update.frontmatterChanges['set'], <Object?>['alpha', 'beta']);
+    expect(
+      () => (update.frontmatterChanges['set'] as List<Object?>).add('gamma'),
+      throwsUnsupportedError,
+    );
+  });
+
+  test('update changes reject cyclic and unsupported YAML data', () {
+    final cyclicList = <Object?>[];
+    cyclicList.add(cyclicList);
+    final cyclicMap = <String, Object?>{};
+    cyclicMap['self'] = cyclicMap;
+
+    for (final invalid in <Object?>[
+      cyclicList,
+      cyclicMap,
+      const Duration(seconds: 1),
+      <Object?, Object?>{<Object?>[]: 'non-scalar key'},
+    ]) {
+      expect(
+        () => OkfUpdateConceptChange(
+          id: OkfConceptId('existing'),
+          frontmatterChanges: <String, Object?>{'invalid': invalid},
+        ),
+        throwsArgumentError,
+      );
+    }
+
+    Object? deeplyNested = 'leaf';
+    for (var depth = 0; depth < 201; depth++) {
+      deeplyNested = <Object?>[deeplyNested];
+    }
+    expect(
+      () => OkfUpdateConceptChange(
+        id: OkfConceptId('existing'),
+        frontmatterChanges: <String, Object?>{'invalid': deeplyNested},
+      ),
+      throwsArgumentError,
+    );
+  });
+
+  test('link changes trim and require a relationship', () {
+    final link = OkfLinkConceptsChange(
+      source: OkfConceptId('source'),
+      target: OkfConceptId('target'),
+      relationship: '  depends-on\n',
+    );
+
+    expect(link.relationship, 'depends-on');
+    for (final relationship in <String>['', ' ', '\n\t']) {
+      expect(
+        () => OkfLinkConceptsChange(
+          source: OkfConceptId('source'),
+          target: OkfConceptId('target'),
+          relationship: relationship,
+        ),
+        throwsArgumentError,
+      );
+    }
+  });
+
   test('preparation refusal carries the closed Spec judgment', () {
     final validation = OkfSpecValidation(
       OkfReport(
