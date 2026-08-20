@@ -9,9 +9,11 @@
   index and log entries.
 - Enforce one non-normalizing POSIX grammar across bundle inventories, concept
   IDs, and file-system adapters.
-- Snapshot bundle change descriptions, validate relationship names and YAML
-  values, and escape control characters in one-line finding text while
-  retaining raw locations and messages in JSON.
+- Snapshot bundle change descriptions faithfully, keeping frontmatter value
+  types, key order, and the body verbatim, and reject YAML values no change
+  kind can represent with `ArgumentError`.
+- Validate relationship names, and escape control characters in one-line
+  finding text while retaining raw locations and messages in JSON.
 
 ## 0.1.2
 

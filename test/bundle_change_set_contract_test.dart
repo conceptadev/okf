@@ -89,14 +89,72 @@ tags: [a, b]
     final inspected = change.document;
     expect(inspected.frontmatter['title'], isNull);
     expect((inspected.frontmatter['meta'] as Map)['reviewed'], isFalse);
-    expect(inspected.body, 'Original body.\n');
+    expect(inspected.body, 'Original body.');
 
     inspected.frontmatter['title'] = 'Inspection mutation';
-    (inspected.frontmatter['meta'] as Map)['reviewed'] = true;
+    expect(
+      () => (inspected.frontmatter['meta'] as Map)['reviewed'] = true,
+      throwsUnsupportedError,
+    );
     final inspectedAgain = change.document;
     expect(inspectedAgain, isNot(same(inspected)));
     expect(inspectedAgain.frontmatter['title'], isNull);
     expect((inspectedAgain.frontmatter['meta'] as Map)['reviewed'], isFalse);
+  });
+
+  test('create changes snapshot documents without canonicalizing them', () {
+    final verified = DateTime.utc(2024, 1, 2, 3, 4, 5);
+    final change = OkfCreateConceptChange(
+      id: OkfConceptId('new-concept'),
+      document: OkfDocument(
+        frontmatter: <String, Object?>{'zeta': 1, 'type': 'Reference'},
+        body: 'No trailing newline.',
+      ),
+    );
+
+    // Serializing would reorder keys and add a trailing newline; describing
+    // a change must not.
+    expect(change.document.frontmatter.keys, <String>['zeta', 'type']);
+    expect(change.document.body, 'No trailing newline.');
+
+    // Serializing emits dates as quoted scalars, which read back as strings.
+    final dated = OkfCreateConceptChange(
+      id: OkfConceptId('dated'),
+      document: OkfDocument(
+        frontmatter: <String, Object?>{'verified': verified},
+      ),
+    );
+    expect(dated.document.frontmatter['verified'], same(verified));
+
+    // A body-only document whose body opens with a --- line stays body-only.
+    const ambiguous = '---\nnot: frontmatter\n---\n\nreal body\n';
+    final bodyOnly = OkfCreateConceptChange(
+      id: OkfConceptId('body-only'),
+      document: OkfDocument(body: ambiguous, hasFrontmatter: false),
+    );
+    expect(bodyOnly.document.hasFrontmatter, isFalse);
+    expect(bodyOnly.document.frontmatter, isEmpty);
+    expect(bodyOnly.document.body, ambiguous);
+  });
+
+  test('every change kind rejects unsupported YAML values alike', () {
+    const unsupported = Duration(seconds: 1);
+    expect(
+      () => OkfCreateConceptChange(
+        id: OkfConceptId('new-concept'),
+        document: OkfDocument(
+          frontmatter: <String, Object?>{'invalid': unsupported},
+        ),
+      ),
+      throwsArgumentError,
+    );
+    expect(
+      () => OkfUpdateConceptChange(
+        id: OkfConceptId('existing'),
+        frontmatterChanges: <String, Object?>{'invalid': unsupported},
+      ),
+      throwsArgumentError,
+    );
   });
 
   test('update changes snapshot nested maps and every iterable', () {

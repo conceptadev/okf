@@ -13,20 +13,35 @@ sealed class OkfBundleChange {
 /// A request to create a concept from a complete document.
 final class OkfCreateConceptChange extends OkfBundleChange {
   /// Creates a concept-change description, snapshotting [document].
+  ///
+  /// The parts are snapshotted rather than re-serialized so the description
+  /// stays faithful to what the caller supplied: frontmatter values keep
+  /// their runtime types and key order, and the body is retained verbatim.
+  /// Canonicalization belongs to serialization, not to describing a change.
+  /// Values YAML cannot represent are rejected here with [ArgumentError],
+  /// matching [OkfUpdateConceptChange].
   OkfCreateConceptChange({required this.id, required OkfDocument document})
-      : _serializedDocument = document.serialize();
+      : _frontmatter = deepUnmodifiableJsonMap(document.frontmatter),
+        _body = document.body,
+        _hasFrontmatter = document.hasFrontmatter;
 
   /// The ID for the new concept.
   final OkfConceptId id;
 
-  final String _serializedDocument;
+  final Map<String, Object?> _frontmatter;
+  final String _body;
+  final bool _hasFrontmatter;
 
   /// A detached copy of the prospective concept document.
   ///
-  /// Each access returns a newly parsed document, so mutations made while
-  /// inspecting one copy cannot change this description.
-  OkfDocument get document =>
-      OkfDocument.parse(_serializedDocument, sourcePath: id.documentPath);
+  /// Each access returns a new document over the frozen snapshot, so
+  /// mutations made while inspecting one copy cannot change this
+  /// description. Nested frontmatter collections are unmodifiable.
+  OkfDocument get document => OkfDocument(
+        frontmatter: _frontmatter,
+        body: _body,
+        hasFrontmatter: _hasFrontmatter,
+      );
 }
 
 /// A request to update the managed portions of an existing concept.

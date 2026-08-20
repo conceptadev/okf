@@ -1,5 +1,7 @@
 import 'dart:collection';
 
+import 'yaml_limits.dart';
+
 /// Recursively snapshots [source] as supported, immutable YAML data.
 ///
 /// Maps retain their iteration order and every non-string iterable is copied
@@ -13,9 +15,6 @@ Map<String, Object?> deepUnmodifiableJsonMap(Map<String, Object?> source) {
 }
 
 final class _SnapshotState {
-  static const int _maximumDepth = 200;
-  static const int _maximumNodes = 100000;
-
   final Set<Object> _active = HashSet<Object>.identity();
   var _nodes = 0;
 
@@ -84,14 +83,14 @@ final class _SnapshotState {
       value is DateTime;
 
   void _checkDepth(int depth) {
-    if (depth > _maximumDepth) {
+    if (depth > maximumYamlDepth) {
       throw ArgumentError('YAML data exceeds the supported nesting depth.');
     }
   }
 
   void _countNode() {
     _nodes++;
-    if (_nodes > _maximumNodes) {
+    if (_nodes > maximumYamlNodes) {
       throw ArgumentError('YAML data exceeds the supported node limit.');
     }
   }
