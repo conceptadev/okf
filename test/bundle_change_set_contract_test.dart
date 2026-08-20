@@ -237,28 +237,4 @@ tags: [a, b]
       );
     }
   });
-
-  test('preparation refusal carries the closed Spec judgment', () {
-    final validation = OkfSpecValidation(
-      OkfReport(
-        findings: <OkfFinding>[
-          OkfFinding(
-            id: OkfFindingId.okf('invalid-change'),
-            severity: OkfFindingSeverity.error,
-            message: 'The change is invalid.',
-          ),
-        ],
-      ),
-    );
-    final OkfBundlePreparation result = OkfPreparationRefused(
-      validation: validation,
-    );
-
-    expect(result, isA<OkfPreparationRefused>());
-    expect(
-      (result as OkfPreparationRefused).validation,
-      same(validation),
-    );
-    expect(validation.isConformant, isFalse);
-  });
 }

@@ -1,7 +1,5 @@
-import 'bundle.dart';
 import 'concept_id.dart';
 import 'document.dart';
-import 'finding.dart';
 import 'json_data.dart';
 
 /// A prospective mutation included in an [OkfBundleChangeSet].
@@ -127,82 +125,4 @@ final class OkfBundleChangeSet {
 
   /// The changes in application order.
   final List<OkfBundleChange> changes;
-}
-
-/// An immutable view of the complete candidate prepared for a bundle write.
-///
-/// Concept values are the exact serialized Markdown bytes represented by the
-/// candidate. [toBundle] returns a detached in-memory copy for downstream
-/// inspection; changing that copy cannot change a prepared write.
-final class OkfPreparedCandidate {
-  OkfPreparedCandidate._({
-    required Map<String, String> concepts,
-    required Map<String, String> indexes,
-    required Map<String, String> logs,
-    required Set<String> assets,
-  })  : concepts = Map<String, String>.unmodifiable(concepts),
-        indexes = Map<String, String>.unmodifiable(indexes),
-        logs = Map<String, String>.unmodifiable(logs),
-        assets = Set<String>.unmodifiable(assets);
-
-  /// Serialized concept documents keyed by bundle-relative path.
-  final Map<String, String> concepts;
-
-  /// Serialized index documents keyed by bundle-relative path.
-  final Map<String, String> indexes;
-
-  /// Serialized log documents keyed by bundle-relative path.
-  final Map<String, String> logs;
-
-  /// Asset paths present in the candidate.
-  final Set<String> assets;
-
-  /// Materializes a detached bundle for read-only downstream analysis.
-  OkfBundle toBundle() => OkfBundle.fromDocuments(
-        <String, OkfDocument>{
-          for (final entry in concepts.entries)
-            entry.key: OkfDocument.parse(entry.value, sourcePath: entry.key),
-        },
-        indexes: indexes,
-        logs: logs,
-        assets: assets,
-      );
-}
-
-/// Opaque proof that an exact candidate passed OKF Spec validation.
-///
-/// Only the package's preparation implementation can construct this value.
-final class OkfPreparedChange {
-  const OkfPreparedChange._({
-    required this.candidate,
-    required this.validation,
-  });
-
-  /// The immutable candidate that was validated.
-  final OkfPreparedCandidate candidate;
-
-  /// The closed OKF Spec judgment for [candidate].
-  final OkfSpecValidation validation;
-}
-
-/// The result of preparing an [OkfBundleChangeSet].
-sealed class OkfBundlePreparation {
-  const OkfBundlePreparation._();
-}
-
-/// A candidate refused because it is not OKF Spec-conformant.
-final class OkfPreparationRefused extends OkfBundlePreparation {
-  /// Creates a refusal carrying the candidate's OKF Spec judgment.
-  const OkfPreparationRefused({required this.validation}) : super._();
-
-  /// The non-conformant OKF Spec judgment.
-  final OkfSpecValidation validation;
-}
-
-/// A candidate prepared for inspection and eventual commit.
-final class OkfPreparationReady extends OkfBundlePreparation {
-  const OkfPreparationReady._(this.prepared) : super._();
-
-  /// The opaque prepared change.
-  final OkfPreparedChange prepared;
 }
