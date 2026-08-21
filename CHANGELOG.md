@@ -4,9 +4,22 @@
   conformance judgment, adapter verdicts, change descriptions, and index/log
   entries.
 - Pin the finding ID grammar to lowercase kebab-case `<namespace>/<code>`
-  and hold `OkfReport` findings in one canonical order.
+  and hold `OkfReport` findings in one canonical order on every surface:
+  path, line, column, ID, severity, message.
 - Move `OkfIndexEntry` into the index/log model and add value equality to
   index and log entries.
+- Namespace every Spec finding as `okf/<code>` and expose read-only rule
+  descriptors while keeping execution fixed inside `OkfSpecValidator`.
+  Validation text and JSON now project the shared Report, bundle load failures
+  are findings, and CLI exit status is judged by the Verdict. `okf validate
+  --strict` fails on advisories; `--warnings-as-errors` remains as an alias.
+- Breaking: `okf validate --output json` replaces the `valid`, `error_count`,
+  `warning_count`, and `diagnostics` fields with the Report projection — a
+  `findings` array whose entries carry `id`, `severity`, `message`, and
+  `location`.
+- Breaking: remove `OkfDiagnostic` and `OkfValidationReport` (with `isValid`,
+  `errorCount`, and `warningCount`) in favor of `OkfFinding`, `OkfReport`, and
+  the closed `OkfSpecValidator`.
 - Enforce one non-normalizing POSIX grammar across bundle inventories, concept
   IDs, and file-system adapters.
 - Snapshot bundle change descriptions faithfully, keeping frontmatter value

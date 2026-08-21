@@ -78,14 +78,15 @@ void main() {
     );
     final payload = jsonDecode(json.stdout) as Map<String, Object?>;
     expect(json.exitCode, 0);
-    expect(payload['valid'], isTrue);
-    expect(payload['error_count'], 0);
-    expect(payload['warning_count'], 0);
-    expect(payload['diagnostics'], isEmpty);
+    expect(payload['findings'], isEmpty);
+    expect(payload.keys, <String>{'findings'});
   });
 
   test('reports conformance and load failures with exit code 1', () async {
     await _writeConcept(bundle, 'missing_type.md', includeType: false);
+    await File(p.join(bundle.path, 'empty_type.md')).writeAsString(
+      '---\ntype: ""\n---\n',
+    );
     await File(p.join(bundle.path, 'broken.md')).writeAsString(
       '---\ntype: Reference\nbroken: [\n',
     );
@@ -95,24 +96,27 @@ void main() {
       sandbox.path,
     );
     final payload = jsonDecode(result.stdout) as Map<String, Object?>;
-    final diagnostics = payload['diagnostics']! as List<Object?>;
+    final findings =
+        (payload['findings']! as List<Object?>).cast<Map<String, Object?>>();
 
     expect(result.exitCode, 1);
-    expect(payload['valid'], isFalse);
-    expect(payload['error_count'], 2);
     expect(
-      diagnostics
-          .cast<Map<String, Object?>>()
-          .singleWhere((item) => item['code'] == 'invalid_document')['line'],
+      (findings.singleWhere(
+        (item) => item['id'] == 'okf/invalid-document',
+      )['location']! as Map<String, Object?>)['line'],
       isNotNull,
     );
     expect(
-      diagnostics.cast<Map<String, Object?>>().map((item) => item['code']),
-      containsAll(<String>['invalid_document', 'missing_type']),
+      findings.map((item) => item['id']),
+      orderedEquals(<String>[
+        'okf/invalid-document',
+        'okf/missing-type',
+        'okf/missing-type',
+      ]),
     );
   });
 
-  test('can promote warnings to a failing exit status', () async {
+  test('strict mode promotes advisories to a failing exit status', () async {
     await _writeConcept(bundle, 'café.md');
 
     final ordinary = await _run(
@@ -120,13 +124,19 @@ void main() {
       sandbox.path,
     );
     expect(ordinary.exitCode, 0);
-    expect(ordinary.stdout, contains('non_portable_concept_id'));
+    expect(ordinary.stdout, contains('advisory okf/non-portable-concept-id'));
 
     final strict = await _run(
-      <String>['validate', 'bundle', '--warnings-as-errors'],
+      <String>['validate', 'bundle', '--strict'],
       sandbox.path,
     );
     expect(strict.exitCode, 1);
+
+    final alias = await _run(
+      <String>['validate', 'bundle', '--warnings-as-errors'],
+      sandbox.path,
+    );
+    expect(alias.exitCode, 1);
   });
 
   test('format check is non-mutating and format is idempotent', () async {
@@ -172,7 +182,7 @@ void main() {
     );
 
     expect(result.exitCode, 1);
-    expect(result.stdout, contains('invalid_document'));
+    expect(result.stdout, contains('okf/invalid-document'));
     expect(await valid.readAsString(), unformatted);
   });
 
@@ -263,10 +273,10 @@ void main() {
     );
 
     expect(result.exitCode, 1);
-    expect(result.stdout, contains('invalid_reserved_document'));
+    expect(result.stdout, contains('okf/invalid-reserved-document'));
   });
 
-  test('escapes control characters in terminal diagnostics', () async {
+  test('escapes control characters in terminal findings', () async {
     if (Platform.isWindows) {
       return;
     }

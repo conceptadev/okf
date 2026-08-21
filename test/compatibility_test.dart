@@ -74,11 +74,11 @@ timestamp: "2026-07-01"
       ],
     );
 
-    final report = const OkfValidator().validate(bundle);
+    final report = const OkfSpecValidator().validate(bundle).report;
     final graph = OkfGraph.fromBundle(bundle);
     final generatedIndexes = const OkfIndexGenerator().generate(bundle);
 
-    expect(report.isValid, isTrue);
+    expect(OkfVerdict.of(report).exitCode, 0);
     expect(
       graph.edges.map((edge) => edge.resolution),
       containsAll(<OkfGraphResolution>[
@@ -113,12 +113,12 @@ timestamp: "2026-07-01"
       ),
     });
 
-    final report = const OkfValidator().validate(bundle);
+    final report = const OkfSpecValidator().validate(bundle).report;
 
-    expect(report.isValid, isTrue);
+    expect(OkfVerdict.of(report).exitCode, 0);
     expect(
-      report.diagnostics.map((diagnostic) => diagnostic.code),
-      contains('invalid_tags'),
+      report.findings.map((finding) => finding.id.value),
+      contains('okf/invalid-tags'),
     );
   });
 }

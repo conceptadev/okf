@@ -46,6 +46,8 @@ void main() {
       report.toText(),
       'concept.md:4:2: advisory vendor/review-needed: Review this value.',
     );
+    expect(report.toTextLines(), <String>[report.toText()]);
+    expect(OkfReport().toTextLines(), isEmpty);
     expect(report.toJson(), <String, Object?>{
       'findings': <Object?>[
         <String, Object?>{
