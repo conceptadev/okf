@@ -21,6 +21,7 @@ implementation and is not affiliated with or endorsed by Google.
 - Apply validated change sets that write concept, index, and log atomically.
 - Parse and emit `index.md` and `log.md` entries through one shared model.
 - Export bundle graphs as JSON, DOT, or Mermaid.
+- Serve a read-only Model Context Protocol surface for coding agents.
 - Use the APIs without `dart:io`, or import `okf_io.dart` for filesystem
   operations.
 
@@ -46,6 +47,7 @@ okf validate path/to/bundle --strict
 okf format path/to/bundle --check
 okf index path/to/bundle --check
 okf graph path/to/bundle --output mermaid
+okf mcp path/to/bundle
 ```
 
 Graph filters are repeatable, compose across fields, and apply to JSON, DOT,
@@ -100,6 +102,37 @@ Inputs:
 
 Releases attach an `okf-linux-x64` and an `okf-macos-arm64` binary, so the
 action runs on Linux and macOS runners.
+
+## MCP server
+
+`okf mcp <bundle>` serves a read-only Model Context Protocol surface over
+stdio, so a coding agent can navigate and check a bundle without raw file
+reads. While the server runs, standard output carries JSON-RPC alone and
+every diagnostic goes to standard error. Each call re-reads the bundle, so an
+agent that edits files between calls never sees a stale answer.
+
+| Tool | Arguments | Returns |
+| --- | --- | --- |
+| `list-concepts` | none | Every concept with its type, title, status, and trust tier. |
+| `lookup-concept` | `id` | One concept, including its canonical Markdown. |
+| `query-graph` | `OkfGraphQuery.jsonSchema` | The versioned graph JSON that `okf graph --output json` emits. |
+| `validate` | `strict` | The Report `okf validate --output json` emits, plus the Verdict's `exit_code`. |
+
+`validate` returns the same Report as the command line for the same bundle
+and inputs — the same finding IDs, locations, and severities — and `strict`
+is the `--warnings-as-errors` flag, so an agent can
+reproduce the CI gate's judgment before pushing. Arguments are validated
+against each tool's schema; rejected arguments come back as a tool error.
+
+Register the server with an MCP client by pointing it at the executable:
+
+```json
+{
+  "mcpServers": {
+    "okf": {"command": "okf", "args": ["mcp", "path/to/bundle"]}
+  }
+}
+```
 
 ## Library
 
