@@ -13,6 +13,9 @@
   Validation text and JSON now project the shared Report, bundle load failures
   are findings, and CLI exit status is judged by the Verdict. `okf validate
   --strict` fails on advisories; `--warnings-as-errors` remains as an alias.
+- Add composable graph filters for concept type, path prefix, and edge
+  resolution.
+- Version and document the graph JSON schema.
 - Breaking: `okf validate --output json` replaces the `valid`, `error_count`,
   `warning_count`, and `diagnostics` fields with the Report projection — a
   `findings` array whose entries carry `id`, `severity`, `message`, and

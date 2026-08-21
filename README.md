@@ -46,6 +46,28 @@ okf index path/to/bundle --check
 okf graph path/to/bundle --output mermaid
 ```
 
+Graph filters are repeatable, compose across fields, and apply to JSON, DOT,
+and Mermaid output:
+
+```console
+okf graph path/to/bundle \
+  --type Metric \
+  --path-prefix analytics/ \
+  --resolution unresolved
+```
+
+Values for the same flag are alternatives; different flags are combined. Type
+and path filters select an induced concept subgraph, and resolution filters
+then select its edges. Path prefixes match bundle-relative document paths such
+as `analytics/revenue.md`. Without filters, the complete graph is emitted.
+
+JSON graph output follows the versioned
+[`graph-v1.schema.json`](schemas/graph-v1.schema.json) contract. Its root
+`schema_version` is `"1"`; consumers should reject versions they do not
+support. The library exports `OkfGraphQuery`, its machine-readable
+`OkfGraphQuery.jsonSchema`, and `okfGraphJsonSchemaVersion` so other adapters
+can use the same query and output contracts.
+
 Commands use exit code `0` for success, `1` for a conformance or check
 failure, and `2` for invalid invocation or I/O failure. Advisory findings
 fail validation only under `--strict`. Validation can be emitted as JSON for
