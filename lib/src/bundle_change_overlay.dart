@@ -40,6 +40,7 @@ final class OkfBundleChangeOverlay {
     final documents = LinkedHashMap<OkfConceptId, OkfDocument>.of(
       base.concepts,
     );
+    final logs = Map<String, String>.of(base.logFiles);
     final files = <String, String>{};
     final logEntries = <OkfLogEntry>[];
     final affectedIndexes = <String>{};
@@ -63,10 +64,9 @@ final class OkfBundleChangeOverlay {
       }
     }
 
-    final logs = Map<String, String>.of(base.logFiles);
     final log = logEntries.isEmpty
         ? null
-        : _rewrittenLog(base.logFiles[_rootLogPath], logEntries);
+        : _rewrittenLog(logs[_rootLogPath], logEntries);
     if (log != null) {
       logs[_rootLogPath] = log;
       files[_rootLogPath] = log;

@@ -11,7 +11,7 @@ import 'graph.dart';
 import 'index_generator.dart';
 import 'io/bundle_loader.dart';
 import 'io/bundle_writer.dart';
-import 'mcp/read_server.dart';
+import 'mcp/server.dart';
 import 'spec_rules/load_findings.dart';
 import 'validator.dart';
 import 'version.dart';
@@ -355,7 +355,7 @@ Commands:
   format     Canonically format Markdown documents
   index      Generate deterministic bundle indexes
   graph      Render the bundle relationship graph
-  mcp        Serve the read tool surface over MCP stdio
+  mcp        Serve the OKF tool surface over MCP stdio
 
 Global options:
 ${_parser.usage}
