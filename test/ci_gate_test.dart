@@ -5,6 +5,21 @@ import 'package:test/test.dart';
 import 'package:yaml/yaml.dart';
 
 void main() {
+  test('repository actions are pinned to immutable commits', () {
+    for (final path in <String>[
+      'action.yml',
+      '.github/workflows/ci.yml',
+      '.github/workflows/release.yml',
+    ]) {
+      final source = File(path).readAsStringSync();
+      expect(
+        source,
+        isNot(contains(RegExp(r'uses:\s+[^@\s]+@(?![0-9a-f]{40}(?:\s|$))'))),
+        reason: '$path contains a movable action reference',
+      );
+    }
+  });
+
   test('composite action checks out and validates with zero configuration', () {
     final source = File('action.yml').readAsStringSync();
     final action = loadYaml(source) as YamlMap;
