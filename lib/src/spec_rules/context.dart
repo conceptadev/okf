@@ -1,5 +1,6 @@
 import '../bundle.dart';
 import '../document.dart';
+import '../index_log.dart';
 
 /// Parsed views shared by fixed OKF Spec rules during one validation pass.
 final class SpecValidationContext {
@@ -10,10 +11,20 @@ final class SpecValidationContext {
       indexDocuments: _parseReservedDocuments(
         bundle.indexFiles,
         invalidDocuments,
+        (path, document) => ParsedIndexDocument(
+          path: path,
+          document: document,
+          content: OkfIndexDocument.parseBody(document.body),
+        ),
       ),
       logDocuments: _parseReservedDocuments(
         bundle.logFiles,
         invalidDocuments,
+        (path, document) => ParsedLogDocument(
+          path: path,
+          document: document,
+          content: OkfLogDocument.parseBody(document.body),
+        ),
       ),
       invalidDocuments: invalidDocuments,
     );
@@ -21,37 +32,48 @@ final class SpecValidationContext {
 
   SpecValidationContext._({
     required this.bundle,
-    required List<ParsedReservedDocument> indexDocuments,
-    required List<ParsedReservedDocument> logDocuments,
+    required List<ParsedIndexDocument> indexDocuments,
+    required List<ParsedLogDocument> logDocuments,
     required List<InvalidReservedDocument> invalidDocuments,
-  })  : indexDocuments = List<ParsedReservedDocument>.unmodifiable(
+  })  : indexDocuments = List<ParsedIndexDocument>.unmodifiable(
           indexDocuments,
         ),
-        logDocuments = List<ParsedReservedDocument>.unmodifiable(logDocuments),
+        logDocuments = List<ParsedLogDocument>.unmodifiable(logDocuments),
         invalidDocuments = List<InvalidReservedDocument>.unmodifiable(
           invalidDocuments,
         );
 
   final OkfBundle bundle;
-  final List<ParsedReservedDocument> indexDocuments;
-  final List<ParsedReservedDocument> logDocuments;
+  final List<ParsedIndexDocument> indexDocuments;
+  final List<ParsedLogDocument> logDocuments;
   final List<InvalidReservedDocument> invalidDocuments;
 }
 
-final class ParsedReservedDocument {
-  ParsedReservedDocument({required this.path, required this.document})
-      : bodyLines = List<String>.unmodifiable(
-          document.body
-              .split(RegExp(r'\r?\n'))
-              .map((line) => line.trim())
-              .where((line) => line.isNotEmpty),
-        );
+sealed class ParsedReservedDocument {
+  const ParsedReservedDocument({required this.path, required this.document});
 
   final String path;
   final OkfDocument document;
-  final List<String> bodyLines;
+}
 
-  Iterable<String> get logBody => bodyLines.skip(1);
+final class ParsedIndexDocument extends ParsedReservedDocument {
+  const ParsedIndexDocument({
+    required super.path,
+    required super.document,
+    required this.content,
+  });
+
+  final OkfIndexParseResult content;
+}
+
+final class ParsedLogDocument extends ParsedReservedDocument {
+  const ParsedLogDocument({
+    required super.path,
+    required super.document,
+    required this.content,
+  });
+
+  final OkfLogParseResult content;
 }
 
 final class InvalidReservedDocument {
@@ -61,18 +83,16 @@ final class InvalidReservedDocument {
   final FormatException error;
 }
 
-List<ParsedReservedDocument> _parseReservedDocuments(
+List<T> _parseReservedDocuments<T extends ParsedReservedDocument>(
   Map<String, String> files,
   List<InvalidReservedDocument> invalidDocuments,
+  T Function(String path, OkfDocument document) convert,
 ) {
-  final parsedDocuments = <ParsedReservedDocument>[];
+  final parsedDocuments = <T>[];
   for (final MapEntry(key: path, value: source) in files.entries) {
     try {
       parsedDocuments.add(
-        ParsedReservedDocument(
-          path: path,
-          document: OkfDocument.parse(source, sourcePath: path),
-        ),
+        convert(path, OkfDocument.parse(source, sourcePath: path)),
       );
     } on FormatException catch (error) {
       invalidDocuments.add(InvalidReservedDocument(path: path, error: error));

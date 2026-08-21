@@ -8,6 +8,9 @@
   path, line, column, ID, severity, message.
 - Move `OkfIndexEntry` into the index/log model and add value equality to
   index and log entries.
+- Add `OkfIndexDocument` and `OkfLogDocument`, which parse and emit the
+  `index.md` and `log.md` entry format. The index generator and the reserved
+  file rules consume them instead of carrying their own copy of the format.
 - Namespace every Spec finding as `okf/<code>` and expose read-only rule
   descriptors while keeping execution fixed inside `OkfSpecValidator`.
   Validation text and JSON now project the shared Report, bundle load failures
