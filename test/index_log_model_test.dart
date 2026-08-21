@@ -35,6 +35,24 @@ void main() {
     expect(parsed.toDocument().serialize(), document.serialize());
   });
 
+  test('index emission preserves established punctuation bytes', () {
+    final serialized = OkfIndexDocument(
+      entries: const <OkfIndexEntry>[
+        OkfIndexEntry(
+          type: 'Metric',
+          title: "Revenue (USD) - v1.0 / analyst's",
+          link: 'revenue.md',
+          description: '',
+        ),
+      ],
+    ).serialize();
+
+    expect(
+      serialized,
+      "# Metric\n\n* [Revenue (USD) - v1.0 / analyst's](revenue.md)\n",
+    );
+  });
+
   test('log entries survive an emit and parse round trip', () {
     final document = OkfLogDocument(
       title: 'Bundle Update Log',

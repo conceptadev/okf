@@ -156,55 +156,126 @@ final class OkfMcpServer {
   }
 
   void _registerWriteTools(McpServer server) {
-    server.registerTool(
+    _registerWrite(
+      server,
       'create-concept',
-      description: 'Create a concept, maintaining the index and log with it.',
-      inputSchema: _writeSchema(const <String>['id', 'type']),
-      annotations: const ToolAnnotations(
-        readOnlyHint: false,
-        destructiveHint: false,
-        idempotentHint: false,
-        openWorldHint: false,
-      ),
-      callback: (arguments, extra) => _write(
-        () => OkfCreateConceptChange(
-          id: OkfConceptId(arguments['id']! as String),
-          document: OkfDocument(
-            frontmatter: _managedFrontmatter(arguments),
-            body: arguments['body'] as String? ?? '',
-          ),
+      'Create a concept, maintaining the index and log with it.',
+      properties: _conceptWriteProperties,
+      requiredProperties: const <String>['id', 'type'],
+      destructive: false,
+      idempotent: false,
+      describe: (arguments) => OkfCreateConceptChange(
+        id: OkfConceptId(arguments['id']! as String),
+        document: OkfDocument(
+          frontmatter: _managedFrontmatter(arguments),
+          body: arguments['body'] as String? ?? '',
         ),
       ),
     );
 
-    server.registerTool(
+    _registerWrite(
+      server,
       'update-concept',
-      description: 'Update the managed fields of an existing concept.',
-      inputSchema: _writeSchema(const <String>['id']),
-      annotations: const ToolAnnotations(
-        readOnlyHint: false,
-        destructiveHint: true,
-        idempotentHint: true,
-        openWorldHint: false,
-      ),
-      callback: (arguments, extra) => _write(
-        () {
-          final frontmatter = _managedFrontmatter(arguments);
-          final body = arguments['body'] as String?;
-          if (frontmatter.isEmpty && body == null) {
-            throw OkfBundleChangeException(
-              'Update for ${arguments['id']} does not change a managed field.',
-            );
-          }
-          return OkfUpdateConceptChange(
-            id: OkfConceptId(arguments['id']! as String),
-            frontmatterChanges: frontmatter,
-            body: body,
+      'Update the managed fields of an existing concept.',
+      properties: _conceptWriteProperties,
+      requiredProperties: const <String>['id'],
+      destructive: true,
+      idempotent: true,
+      describe: (arguments) {
+        final frontmatter = _managedFrontmatter(arguments);
+        final body = arguments['body'] as String?;
+        if (frontmatter.isEmpty && body == null) {
+          throw OkfBundleChangeException(
+            'Update for ${arguments['id']} does not change a managed field.',
           );
-        },
+        }
+        return OkfUpdateConceptChange(
+          id: OkfConceptId(arguments['id']! as String),
+          frontmatterChanges: frontmatter,
+          body: body,
+        );
+      },
+    );
+
+    _registerWrite(
+      server,
+      'link-concepts',
+      'Relate two concepts, recording the link on the source.',
+      properties: <String, JsonSchema>{
+        'source': _conceptIdSchema,
+        'target': _conceptIdSchema,
+        'relationship': JsonSchema.string(
+          minLength: 1,
+          pattern: r'\S',
+          description: 'Producer-defined relationship type.',
+        ),
+      },
+      requiredProperties: const <String>[
+        'source',
+        'target',
+        'relationship',
+      ],
+      destructive: false,
+      idempotent: true,
+      describe: (arguments) => OkfLinkConceptsChange(
+        source: OkfConceptId(arguments['source']! as String),
+        target: OkfConceptId(arguments['target']! as String),
+        relationship: arguments['relationship']! as String,
+      ),
+    );
+
+    _registerWrite(
+      server,
+      'deprecate-concept',
+      'Retire a concept, recording why in the log.',
+      properties: <String, JsonSchema>{
+        'id': _conceptIdSchema,
+        'note': JsonSchema.string(
+          description: 'Context recorded with the lifecycle change.',
+        ),
+      },
+      requiredProperties: const <String>['id'],
+      destructive: true,
+      idempotent: true,
+      describe: (arguments) => OkfDeprecateConceptChange(
+        id: OkfConceptId(arguments['id']! as String),
+        note: arguments['note'] as String?,
       ),
     );
   }
+
+  /// Registers one write verb from its parameters and [describe], the
+  /// translation from those parameters into a change description.
+  ///
+  /// Declaring every write verb through here keeps what they share from
+  /// drifting apart: a closed schema is what decides the malformed-input
+  /// tier, so it is not a per-verb choice.
+  void _registerWrite(
+    McpServer server,
+    String name,
+    String description, {
+    required Map<String, JsonSchema> properties,
+    required List<String> requiredProperties,
+    required bool destructive,
+    required bool idempotent,
+    required OkfBundleChange Function(Map<String, Object?> arguments) describe,
+  }) =>
+      server.registerTool(
+        name,
+        description: description,
+        inputSchema: JsonSchema.object(
+          properties: properties,
+          required: requiredProperties,
+          additionalProperties: false,
+        ),
+        annotations: ToolAnnotations(
+          readOnlyHint: false,
+          destructiveHint: destructive,
+          idempotentHint: idempotent,
+          openWorldHint: false,
+        ),
+        callback: (arguments, extra) => _write(() => describe(arguments)),
+      );
 
   Future<CallToolResult> _readComplete(
     CallToolResult Function(OkfBundleLoadResult) answer,
@@ -224,13 +295,14 @@ final class OkfMcpServer {
   ) =>
       _guard(() async => answer(await _loader.inspect(rootPath)));
 
+  /// Prepares and commits the change returned by [describe].
+  ///
   /// A Spec-invalid candidate comes back as a refusal carrying the report —
   /// the finding IDs `okf validate` prints for the same state — and the bundle
   /// is left exactly as it was.
   ///
-  /// [describe] is a callback rather than a change so that translating the
-  /// tool arguments happens inside the guard below, keeping a rejected
-  /// argument on this server's tool-error path.
+  /// [describe] runs inside the guard below, so a rejected argument stays on
+  /// the tool-error path.
   Future<CallToolResult> _write(OkfBundleChange Function() describe) =>
       _guard(() async {
         final application = await _applier.apply(
@@ -284,33 +356,28 @@ final JsonSchema _conceptIdSchema = JsonSchema.string(
   description: 'Bundle-relative concept ID, without the .md suffix.',
 );
 
-/// The parameter shape both write verbs take.
+/// The parameters the create and update verbs take.
 ///
-/// The properties beyond `id` are the concept fields the verbs manage;
-/// everything else a document carries belongs to whoever wrote it. This is
-/// also where the malformed-input tier is decided: an argument of the wrong
-/// shape is rejected here, before any change is described.
-JsonObject _writeSchema(List<String> requiredProperties) => JsonSchema.object(
-      properties: <String, JsonSchema>{
-        'id': _conceptIdSchema,
-        'type': JsonSchema.string(
-          minLength: 1,
-          description: 'OKF concept type, such as Reference, Metric, or Note.',
-        ),
-        'title': JsonSchema.string(minLength: 1, description: 'Display name.'),
-        'description': JsonSchema.string(description: 'One-line summary.'),
-        'tags': JsonSchema.array(
-          items: JsonSchema.string(minLength: 1),
-          description: 'Cross-cutting category tags.',
-          uniqueItems: true,
-        ),
-        'body': JsonSchema.string(
-          description: 'Markdown body below the frontmatter.',
-        ),
-      },
-      required: requiredProperties,
-      additionalProperties: false,
-    );
+/// Beyond the `id` that addresses the concept, these are the fields those
+/// verbs manage; everything else a document carries belongs to whoever
+/// wrote it.
+final Map<String, JsonSchema> _conceptWriteProperties = <String, JsonSchema>{
+  'id': _conceptIdSchema,
+  'type': JsonSchema.string(
+    minLength: 1,
+    description: 'OKF concept type, such as Reference, Metric, or Note.',
+  ),
+  'title': JsonSchema.string(minLength: 1, description: 'Display name.'),
+  'description': JsonSchema.string(description: 'One-line summary.'),
+  'tags': JsonSchema.array(
+    items: JsonSchema.string(minLength: 1),
+    description: 'Cross-cutting category tags.',
+    uniqueItems: true,
+  ),
+  'body': JsonSchema.string(
+    description: 'Markdown body below the frontmatter.',
+  ),
+};
 
 /// The managed frontmatter fields [arguments] carries.
 ///

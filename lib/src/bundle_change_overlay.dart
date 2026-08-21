@@ -160,14 +160,9 @@ final class OkfBundleChangeOverlay {
         target: final target,
         relationship: final relationship,
       ):
+      _rejectReservedPath(target);
       final current = _requireDocument(documents, source);
       final targetDocument = documents[target];
-      final label = relationship.trim();
-      if (label.isEmpty) {
-        throw const OkfBundleChangeException(
-          'A relationship label must not be empty.',
-        );
-      }
 
       final declared = current.frontmatter['sources'] ?? const <Object?>[];
       if (declared is! List<Object?>) {
@@ -177,7 +172,7 @@ final class OkfBundleChangeOverlay {
       }
       final link = <String, Object?>{
         'resource': _relativeResource(source, target),
-        'relationship': label,
+        'relationship': relationship,
       };
       if (declared.any((entry) => _sameLink(entry, link))) {
         return null;
@@ -191,7 +186,7 @@ final class OkfBundleChangeOverlay {
         entry: _logEntry(
           day,
           'Linked',
-          '${_conceptLink(source, current)} $label '
+          '${_conceptLink(source, current)} $relationship '
               '${_conceptLink(target, targetDocument)}',
         ),
         affectsIndex: false,
@@ -324,7 +319,8 @@ String _conceptLink(OkfConceptId id, OkfDocument? document) {
   } else {
     title = document.title ?? id.basename;
   }
-  return '[$title](${encodeOkfLinkPath(id.documentPath)})';
+  return '[${escapeOkfConceptLinkLabel(title)}]('
+      '${encodeOkfLinkPath(id.documentPath)})';
 }
 
 Iterable<String> _indexAncestors(OkfConceptId id) sync* {

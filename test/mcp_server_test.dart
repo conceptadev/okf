@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:markdown/markdown.dart' as md;
 import 'package:mcp_dart/mcp_dart.dart'
     show latestInitializationProtocolVersion;
 import 'package:okf/okf.dart';
@@ -53,6 +54,8 @@ void main() {
       <String>{
         'create-concept',
         'update-concept',
+        'link-concepts',
+        'deprecate-concept',
         'list-concepts',
         'lookup-concept',
         'query-graph',
@@ -76,18 +79,20 @@ void main() {
       byName['query-graph']!['inputSchema'],
       OkfGraphQuery.jsonSchema,
     );
-    expect(byName['create-concept']!['annotations'], <String, Object?>{
-      'readOnlyHint': false,
-      'destructiveHint': false,
-      'idempotentHint': false,
-      'openWorldHint': false,
-    });
-    expect(byName['update-concept']!['annotations'], <String, Object?>{
-      'readOnlyHint': false,
-      'destructiveHint': true,
-      'idempotentHint': true,
-      'openWorldHint': false,
-    });
+    final effects = <String, ({bool destructive, bool idempotent})>{
+      'create-concept': (destructive: false, idempotent: false),
+      'update-concept': (destructive: true, idempotent: true),
+      'link-concepts': (destructive: false, idempotent: true),
+      'deprecate-concept': (destructive: true, idempotent: true),
+    };
+    for (final MapEntry(key: tool, value: effect) in effects.entries) {
+      expect(byName[tool]!['annotations'], <String, Object?>{
+        'readOnlyHint': false,
+        'destructiveHint': effect.destructive,
+        'idempotentHint': effect.idempotent,
+        'openWorldHint': false,
+      });
+    }
     expect(await server.awaitDiagnostic(), contains('okf mcp: serving'));
   });
 
@@ -249,7 +254,7 @@ void main() {
     }
 
     final unknownTool = await server.send('tools/call', const <String, Object?>{
-      'name': 'link-concepts',
+      'name': 'rename-concept',
       'arguments': <String, Object?>{},
     });
     expect(unknownTool['error'], isNotNull);
@@ -442,6 +447,37 @@ void main() {
         'id': 'metrics/missing',
         'title': 'Missing',
       }),
+      await server.callTool('link-concepts', const <String, Object?>{
+        'source': 'metrics/revenue',
+        'target': 'metrics/revenue.md',
+        'relationship': 'relates-to',
+      }),
+      await server.callTool('link-concepts', const <String, Object?>{
+        'source': 'metrics/revenue',
+        'target': 'metrics/revenue',
+      }),
+      await server.callTool('link-concepts', const <String, Object?>{
+        'source': 'metrics/revenue',
+        'target': 'metrics/revenue',
+        'relationship': '  ',
+      }),
+      await server.callTool('link-concepts', const <String, Object?>{
+        'source': 'metrics/revenue',
+        'target': 'metrics/index',
+        'relationship': 'relates-to',
+      }),
+      await server.callTool('link-concepts', const <String, Object?>{
+        'source': 'metrics/revenue',
+        'target': 'log',
+        'relationship': 'relates-to',
+      }),
+      await server.callTool('deprecate-concept', const <String, Object?>{
+        'id': 'metrics/missing',
+      }),
+      await server.callTool('deprecate-concept', const <String, Object?>{
+        'id': 'metrics/revenue',
+        'note': 7,
+      }),
     ];
     for (final error in rejected) {
       expect(error['isError'], isTrue, reason: '${error['content']}');
@@ -535,6 +571,230 @@ void main() {
 
     final log = OkfLogDocument.parse(await readBundleFile(bundle, 'log.md'));
     expect(log.entries.single.action, 'Updated');
+  });
+
+  test('link-concepts writes the source concept and the log in one operation',
+      () async {
+    await writeConcept(
+      bundle,
+      'metrics/revenue.md',
+      type: 'Metric',
+      title: 'Revenue',
+      body: '# Revenue',
+    );
+    await writeConcept(
+      bundle,
+      'metrics/churn.md',
+      type: 'Metric',
+      title: 'Churn',
+      body: '# Churn',
+    );
+    final server = await serve();
+
+    final result = await server.call('link-concepts', <String, Object?>{
+      'source': 'metrics/revenue',
+      'target': 'metrics/churn',
+      'relationship': 'relates-to',
+    });
+    expect(
+      result['changed_paths'],
+      containsAll(<String>['metrics/revenue.md', 'log.md']),
+    );
+
+    final document = OkfDocument.parse(
+      await readBundleFile(bundle, 'metrics/revenue.md'),
+    );
+    expect(document.frontmatter['sources'], <Object?>[
+      <String, Object?>{'resource': 'churn.md', 'relationship': 'relates-to'},
+    ]);
+    expect(document.body, '# Revenue\n');
+
+    final log = OkfLogDocument.parse(await readBundleFile(bundle, 'log.md'));
+    expect(log.entries.single.action, 'Linked');
+    expect(
+      log.entries.single.description,
+      '[Revenue](metrics/revenue.md) relates-to [Churn](metrics/churn.md)',
+    );
+
+    final cli = await runCli(<String>['validate', 'bundle'], sandbox.path);
+    expect(
+      cli.exitCode,
+      0,
+      reason: 'the bundle the write path produced must pass the CLI gate',
+    );
+  });
+
+  test('link-concepts accepts an unresolved target', () async {
+    await writeConcept(
+      bundle,
+      'metrics/revenue.md',
+      type: 'Metric',
+      title: 'Revenue',
+    );
+    final server = await serve();
+
+    final result = await server.call('link-concepts', <String, Object?>{
+      'source': 'metrics/revenue',
+      'target': 'planned/future-metric',
+      'relationship': 'depends-on',
+    });
+
+    expect(
+      result['changed_paths'],
+      containsAll(<String>['metrics/revenue.md', 'log.md']),
+    );
+    final graph = await server.call('query-graph');
+    expect(
+      _edgeKeys(graph),
+      contains(
+        'metrics/revenue -> ../planned/future-metric.md '
+        '(sources.resource/unresolved)',
+      ),
+    );
+    expect(
+      await readBundleFile(bundle, 'log.md'),
+      contains('planned/future-metric'),
+    );
+  });
+
+  test('link-concepts escapes an unresolved target in the log label', () async {
+    await writeConcept(
+      bundle,
+      'metrics/revenue.md',
+      type: 'Metric',
+      title: 'Revenue',
+    );
+    final server = await serve();
+
+    const target = 'planned/x](mailto:attacker@example.com)[x';
+    await server.call('link-concepts', const <String, Object?>{
+      'source': 'metrics/revenue',
+      'target': target,
+      'relationship': 'depends-on',
+    });
+
+    final log = OkfLogDocument.parse(await readBundleFile(bundle, 'log.md'));
+    final description = log.entries.single.description;
+    expect(
+      description,
+      contains(
+        r'planned\/x\]\(mailto\:attacker\@example\.com\)\[x',
+      ),
+    );
+    expect(description, isNot(contains('](mailto:')));
+    final rendered = md.markdownToHtml(
+      description,
+      extensionSet: md.ExtensionSet.gitHubWeb,
+    );
+    expect(RegExp('<a ').allMatches(rendered), hasLength(2));
+    expect(rendered, isNot(contains('href="mailto:attacker@example.com"')));
+    expect(rendered, contains(target));
+  });
+
+  test('deprecate-concept sets lifecycle status and writes the log entry',
+      () async {
+    await writeConcept(
+      bundle,
+      'metrics/revenue.md',
+      type: 'Metric',
+      title: 'Revenue',
+      body: '# Revenue',
+    );
+    final server = await serve();
+
+    final result = await server.call('deprecate-concept', <String, Object?>{
+      'id': 'metrics/revenue',
+      'note': 'Folded into churn.',
+    });
+    expect(
+      result['changed_paths'],
+      containsAll(<String>['metrics/revenue.md', 'log.md']),
+    );
+
+    expect(
+      OkfDocument.parse(await readBundleFile(bundle, 'metrics/revenue.md'))
+          .status,
+      OkfLifecycleStatus.deprecated,
+    );
+    final log = OkfLogDocument.parse(await readBundleFile(bundle, 'log.md'));
+    expect(log.entries.single.action, 'Deprecated');
+    expect(
+      log.entries.single.description,
+      '[Revenue](metrics/revenue.md) \u2014 Folded into churn.',
+    );
+
+    final cli = await runCli(<String>['validate', 'bundle'], sandbox.path);
+    expect(cli.exitCode, 0);
+  });
+
+  test('repeated link and deprecation calls write no files', () async {
+    await writeConcept(
+      bundle,
+      'metrics/revenue.md',
+      type: 'Metric',
+      title: 'Revenue',
+    );
+    await writeConcept(
+      bundle,
+      'metrics/churn.md',
+      type: 'Metric',
+      title: 'Churn',
+    );
+    final server = await serve();
+    const link = <String, Object?>{
+      'source': 'metrics/revenue',
+      'target': 'metrics/churn',
+      'relationship': 'relates-to',
+    };
+    const deprecation = <String, Object?>{'id': 'metrics/churn'};
+    await server.call('link-concepts', link);
+    await server.call('deprecate-concept', deprecation);
+    final before = await snapshotBundle(bundle);
+
+    final repeatedLink = await server.call('link-concepts', link);
+    final repeatedDeprecation =
+        await server.call('deprecate-concept', deprecation);
+
+    expect(repeatedLink['changed_paths'], isEmpty);
+    expect(repeatedDeprecation['changed_paths'], isEmpty);
+    expect(await snapshotBundle(bundle), before);
+  });
+
+  test('refuses a Spec-invalid link candidate without changing files',
+      () async {
+    await writeConcept(
+      bundle,
+      'metrics/revenue.md',
+      includeType: false,
+      title: 'Revenue',
+      body: '# Revenue',
+    );
+    await writeConcept(
+      bundle,
+      'metrics/churn.md',
+      type: 'Metric',
+      title: 'Churn',
+      body: '# Churn',
+    );
+    final server = await serve();
+    final before = await snapshotBundle(bundle);
+
+    final refusal = await server.callTool(
+      'link-concepts',
+      const <String, Object?>{
+        'source': 'metrics/revenue',
+        'target': 'metrics/churn',
+        'relationship': 'relates-to',
+      },
+    );
+    expect(refusal['isError'], isTrue);
+    expect(
+      _findingIds(refusal['structuredContent']! as Map<String, Object?>),
+      contains('okf/missing-type'),
+      reason: 'a refusal carries the finding IDs the CLI reports',
+    );
+    expect(await snapshotBundle(bundle), before);
+    expect(server.stdoutLines, everyElement(predicate(_isJsonRpc, 'JSON-RPC')));
   });
 
   test('complete reads refuse a partial bundle while validate inspects it',

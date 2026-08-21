@@ -29,11 +29,17 @@
   `query-graph` takes the graph filter vocabulary as its input schema.
 - Add the `create-concept` and `update-concept` MCP write tools, thin adapters
   over `OkfBundleChangeApplier`: one call writes the concept and maintains the
-  `index.md` and `log.md` entries atomically. A change the registered rules
-  reject is refused with the Report the command line prints for the same
-  state and leaves no file changed, while input that describes no bundle state
-  is a plain tool error. Updates manage `type`, `title`, `description`,
+  `index.md` and `log.md` entries atomically. A Spec-invalid candidate is
+  refused with the Report the command line prints for the same state and
+  leaves no file changed, while input that describes no bundle state is a
+  plain tool error. Updates manage `type`, `title`, `description`,
   `tags`, and `body`, and retain every other frontmatter field.
+- Add the `link-concepts` and `deprecate-concept` MCP write tools, completing
+  the fixed tool surface. A link records the relationship on the source
+  concept; an absent target is accepted and remains an unresolved graph edge.
+  A deprecation sets `status: deprecated`. Both update the concept and
+  `log.md` in the same operation and share the write path's refusal and
+  tool-error tiers.
 - Breaking: `okf validate --output json` replaces the `valid`, `error_count`,
   `warning_count`, and `diagnostics` fields with the Report projection — a
   `findings` array whose entries carry `id`, `severity`, `message`, and
