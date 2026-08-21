@@ -29,6 +29,7 @@ void main() {
         'a/../b',
         r'a\b',
         'a/\u0000b',
+        'a/\u0085b',
       ]) {
         expect(() => OkfConceptId(value), throwsFormatException, reason: value);
       }
@@ -75,5 +76,39 @@ void main() {
     );
     expect(bundle.conceptAtPath('a/a.md')?.type, 'A');
     expect(bundle.containsPath('../outside'), isFalse);
+  });
+
+  test('public bundle path values share one POSIX grammar', () {
+    for (final path in <String>[
+      '',
+      '/absolute.md',
+      'a/../outside.md',
+      'a/./concept.md',
+      'a//concept.md',
+      r'a\concept.md',
+      'a/control\u0000.md',
+      'a/control\u0085.md',
+    ]) {
+      expect(
+        () => OkfConceptId.fromDocumentPath(path),
+        throwsFormatException,
+        reason: path,
+      );
+      expect(
+        () => OkfBundle.fromDocuments(
+          const <String, OkfDocument>{},
+          assets: <String>[path],
+        ),
+        throwsFormatException,
+        reason: path,
+      );
+    }
+
+    const safePath = 'métricas/source data.csv';
+    final bundle = OkfBundle.fromDocuments(
+      const <String, OkfDocument>{},
+      assets: const <String>[safePath],
+    );
+    expect(bundle.assetPaths.single, safePath);
   });
 }

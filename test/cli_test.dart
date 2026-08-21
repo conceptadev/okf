@@ -35,7 +35,7 @@ void main() {
 
     final version = await _run(<String>['--version'], sandbox.path);
     expect(version.exitCode, 0);
-    expect(version.stdout, 'okf 0.1.2');
+    expect(version.stdout, 'okf $okfPackageVersion');
 
     final pubspec =
         loadYaml(await File('pubspec.yaml').readAsString()) as YamlMap;

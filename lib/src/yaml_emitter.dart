@@ -1,6 +1,8 @@
 import 'dart:collection';
 import 'dart:convert';
 
+import 'yaml_limits.dart';
+
 /// Preferred top-level frontmatter order used by OKF producer tooling.
 ///
 /// Unknown keys are emitted after these keys in their original insertion
@@ -293,7 +295,7 @@ final class _YamlEmissionState {
 
   void countNode() {
     _nodes++;
-    if (_nodes > 100000) {
+    if (_nodes > maximumYamlNodes) {
       throw const OkfYamlEncodeException(
         'YAML output exceeds the supported node limit.',
       );
