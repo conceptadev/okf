@@ -7,8 +7,11 @@ DateTime? parseIsoDate(String? value) {
   if (parsed == null) {
     return null;
   }
-  final canonical = '${parsed.year.toString().padLeft(4, '0')}-'
-      '${parsed.month.toString().padLeft(2, '0')}-'
-      '${parsed.day.toString().padLeft(2, '0')}';
-  return canonical == value ? parsed : null;
+  return formatIsoDate(parsed) == value ? parsed : null;
 }
+
+/// Emits a canonical `YYYY-MM-DD` date, as [parseIsoDate] accepts it.
+String formatIsoDate(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-'
+    '${date.month.toString().padLeft(2, '0')}-'
+    '${date.day.toString().padLeft(2, '0')}';

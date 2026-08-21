@@ -16,6 +16,10 @@
   Validation text and JSON now project the shared Report, bundle load failures
   are findings, and CLI exit status is judged by the Verdict. `okf validate
   --strict` fails on advisories; `--warnings-as-errors` remains as an alias.
+- Add prepared bundle changes as the single safe write path for create,
+  update, link, and deprecate operations. Preparation validates a complete
+  immutable candidate with the closed Spec validator; commit detects stale
+  source state and writes the exact prepared files transactionally.
 - Add composable graph filters for concept type, path prefix, and edge
   resolution.
 - Version and document the graph JSON schema.

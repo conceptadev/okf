@@ -18,6 +18,7 @@ implementation and is not affiliated with or endorsed by Google.
 - Load bundles safely without following symbolic links.
 - Resolve relative and bundle-relative links while retaining broken links.
 - Generate deterministic directory indexes.
+- Apply validated change sets that write concept, index, and log atomically.
 - Parse and emit `index.md` and `log.md` entries through one shared model.
 - Export bundle graphs as JSON, DOT, or Mermaid.
 - Use the APIs without `dart:io`, or import `okf_io.dart` for filesystem
@@ -135,6 +136,41 @@ print(
   '${report.findings.length} findings, '
   '${graph.edges.length} relationships, exit ${verdict.exitCode}',
 );
+```
+
+Bundle mutations go through one prepared write path. Preparation builds the
+complete candidate and runs the closed OKF Spec validator without touching
+disk. Callers may inspect the immutable candidate before committing the exact
+prepared bytes across concept, index, and log files together:
+
+```dart
+import 'package:okf/okf_io.dart';
+
+const writer = OkfBundleChangeApplier();
+final result = await writer.prepare(
+  'path/to/bundle',
+  OkfBundleChangeSet(<OkfBundleChange>[
+    OkfCreateConceptChange(
+      id: OkfConceptId('metrics/churn'),
+      document: OkfDocument(
+        frontmatter: const <String, Object?>{
+          'type': 'Metric',
+          'title': 'Churn',
+        },
+        body: '# Churn\n',
+      ),
+    ),
+  ]),
+);
+
+switch (result) {
+  case OkfPreparationReady(:final prepared):
+    // Downstream policy may inspect prepared.candidate.toBundle() here.
+    final committed = await writer.commit(prepared);
+    print('Wrote ${committed.changedPaths.length} file(s).');
+  case OkfPreparationRefused(:final validation):
+    print(validation.report.toText());
+}
 ```
 
 See [`example/okf.dart`][example] for a complete command-line example.

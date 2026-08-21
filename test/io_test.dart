@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:okf/okf_io.dart';
+import 'package:okf/src/io/bundle_writer.dart' show OkfBundleWriteTransaction;
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -184,6 +186,18 @@ void main() {
   });
 
   group('OkfBundleWriter', () {
+    test('recursively creates a missing bundle root', () async {
+      final root = p.join(sandbox.path, 'missing', 'bundle');
+
+      final result = await const OkfBundleWriter().writeAll(
+        root,
+        <String, String>{'a.md': 'a\n'},
+      );
+
+      expect(result.changedPaths, <String>['a.md']);
+      expect(await File(p.join(root, 'a.md')).readAsString(), 'a\n');
+    });
+
     test('writes deterministically and supports non-mutating checks', () async {
       final root = await Directory(
         p.join(sandbox.path, 'bundle'),
@@ -266,6 +280,73 @@ void main() {
         await File(p.join(root.path, 'example.md')).readAsString(),
         document.serialize(),
       );
+    });
+
+    test('transactional writes restore the exact original bytes', () async {
+      final root = await Directory(
+        p.join(sandbox.path, 'bundle'),
+      ).create();
+      final original = File(p.join(root.path, 'a.md'));
+      await original.writeAsBytes(<int>[0xff], flush: true);
+      await Directory(p.join(root.path, 'z.md')).create();
+
+      await expectLater(
+        const OkfBundleWriteTransaction().writeAll(
+          root.path,
+          <String, String>{
+            'a.md': 'changed\n',
+            'z.md': 'cannot replace a directory\n',
+          },
+        ),
+        throwsA(isA<FileSystemException>()),
+      );
+
+      expect(await original.readAsBytes(), <int>[0xff]);
+    });
+
+    test('writes wait for the bundle lock held by another process', () async {
+      if (Platform.isWindows) {
+        return;
+      }
+      final root = await Directory(p.join(sandbox.path, 'bundle')).create();
+      final lockPath = p.join(sandbox.path, '.bundle.okf-apply.lock');
+      final readyPath = p.join(sandbox.path, 'lock-ready');
+      final releasePath = p.join(sandbox.path, 'lock-release');
+      final helper = await Process.start(
+        Platform.resolvedExecutable,
+        <String>[
+          'run',
+          p.join('test', 'support', 'hold_file_lock.dart'),
+          lockPath,
+          readyPath,
+          releasePath,
+        ],
+        workingDirectory: Directory.current.path,
+      );
+      addTearDown(() async {
+        helper.kill();
+        await helper.exitCode;
+      });
+      await _waitForFile(File(readyPath));
+
+      var completed = false;
+      final write = const OkfBundleWriter().writeAll(
+          root.path, <String, String>{
+        'held.md': 'held\n'
+      }).whenComplete(() => completed = true);
+      var readCompleted = false;
+      final read = const OkfBundleLoader()
+          .inspect(root.path)
+          .whenComplete(() => readCompleted = true);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(completed, isFalse);
+      expect(readCompleted, isFalse);
+      expect(await File(p.join(root.path, 'held.md')).exists(), isFalse);
+
+      await File(releasePath).writeAsString('release');
+      await write.timeout(const Duration(seconds: 5));
+      await read.timeout(const Duration(seconds: 5));
+      expect(await File(p.join(root.path, 'held.md')).readAsString(), 'held\n');
     });
 
     test('rejects absolute and escaping paths', () async {
@@ -357,4 +438,14 @@ Future<void> _write(
   );
   await file.parent.create(recursive: true);
   await file.writeAsString(contents, encoding: utf8, flush: true);
+}
+
+Future<void> _waitForFile(File file) async {
+  for (var attempt = 0; attempt < 500; attempt++) {
+    if (await file.exists()) {
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  throw TimeoutException('Timed out waiting for ${file.path}');
 }
