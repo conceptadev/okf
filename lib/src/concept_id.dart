@@ -1,5 +1,7 @@
 import 'package:path/path.dart' as p;
 
+import 'bundle_path.dart';
+
 /// The bundle-relative path of an OKF concept, without the `.md` suffix.
 ///
 /// Concept IDs use POSIX separators on every platform. They may contain safe
@@ -8,20 +10,26 @@ import 'package:path/path.dart' as p;
 final class OkfConceptId implements Comparable<OkfConceptId> {
   /// Creates an ID from a bundle-relative path without a `.md` suffix.
   factory OkfConceptId(String value) {
-    final normalized = _validateAndNormalize(value);
-    return OkfConceptId._(normalized);
+    validateBundlePath(value);
+    if (value.endsWith('.md')) {
+      throw FormatException(
+        'A concept ID must not include the .md suffix',
+        value,
+      );
+    }
+    return OkfConceptId._(value);
   }
 
   const OkfConceptId._(this.value);
 
   /// Creates an ID from a bundle-relative concept document path.
   factory OkfConceptId.fromDocumentPath(String path) {
-    final normalizedPath = _normalizeDocumentPath(path);
-    if (!normalizedPath.endsWith('.md')) {
+    validateBundlePath(path);
+    if (!path.endsWith('.md')) {
       throw FormatException('Concept document paths must end in .md', path);
     }
 
-    final basename = p.posix.basename(normalizedPath);
+    final basename = p.posix.basename(path);
     if (basename == 'index.md' || basename == 'log.md') {
       throw FormatException(
         'Reserved OKF documents do not have concept IDs',
@@ -29,12 +37,10 @@ final class OkfConceptId implements Comparable<OkfConceptId> {
       );
     }
 
-    return OkfConceptId(
-      normalizedPath.substring(0, normalizedPath.length - 3),
-    );
+    return OkfConceptId(path.substring(0, path.length - 3));
   }
 
-  /// The normalized bundle-relative ID.
+  /// The validated bundle-relative ID, retained without normalization.
   final String value;
 
   /// Path segments making up this ID.
@@ -71,62 +77,4 @@ final class OkfConceptId implements Comparable<OkfConceptId> {
   static final RegExp _portableAsciiSegment = RegExp(
     r'^[A-Za-z0-9_][A-Za-z0-9_.-]*$',
   );
-
-  static String _normalizeDocumentPath(String value) {
-    if (value.isEmpty) {
-      throw FormatException('A concept document path cannot be empty', value);
-    }
-    if (value.startsWith('/') || p.posix.isAbsolute(value)) {
-      throw FormatException(
-        'A concept document path must be bundle-relative',
-        value,
-      );
-    }
-    if (value.contains(r'\')) {
-      throw FormatException('Concept paths must use / separators', value);
-    }
-
-    final segments = value.split('/');
-    _validateSegments(segments, value);
-    return segments.join('/');
-  }
-
-  static String _validateAndNormalize(String value) {
-    if (value.isEmpty) {
-      throw FormatException('A concept ID cannot be empty', value);
-    }
-    if (value.startsWith('/') || p.posix.isAbsolute(value)) {
-      throw FormatException('A concept ID must be bundle-relative', value);
-    }
-    if (value.contains(r'\')) {
-      throw FormatException('Concept IDs must use / separators', value);
-    }
-    if (value.endsWith('.md')) {
-      throw FormatException(
-        'A concept ID must not include the .md suffix',
-        value,
-      );
-    }
-
-    final segments = value.split('/');
-    _validateSegments(segments, value);
-    return segments.join('/');
-  }
-
-  static void _validateSegments(List<String> segments, String source) {
-    for (final segment in segments) {
-      if (segment.isEmpty || segment == '.' || segment == '..') {
-        throw FormatException(
-          'Concept paths cannot contain empty, . or .. segments',
-          source,
-        );
-      }
-      if (segment.runes.any((rune) => rune < 0x20 || rune == 0x7f)) {
-        throw FormatException(
-          'Concept paths cannot contain control characters',
-          source,
-        );
-      }
-    }
-  }
 }

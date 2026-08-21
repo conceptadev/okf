@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../bundle.dart';
+import '../bundle_path.dart';
 import '../document.dart';
 
 /// A document that could not be decoded or parsed while loading a bundle.
@@ -168,7 +169,7 @@ final class OkfBundleLoader {
 
     for (final entry in entities) {
       try {
-        _validateBundlePath(entry.relativePath);
+        validateBundlePath(entry.relativePath);
       } on FormatException catch (error) {
         issues.add(
           OkfBundleLoadIssue(
@@ -301,30 +302,4 @@ String _relativePath(String rootPath, String entityPath) {
     );
   }
   return p.posix.joinAll(segments);
-}
-
-void _validateBundlePath(String value) {
-  if (value.isEmpty || value.startsWith('/') || value.contains(r'\')) {
-    throw FormatException(
-      'Bundle paths must be non-empty, relative POSIX paths',
-      value,
-    );
-  }
-  final segments = value.split('/');
-  if (segments.any(
-    (segment) => segment.isEmpty || segment == '.' || segment == '..',
-  )) {
-    throw FormatException(
-      'Bundle paths cannot contain empty, . or .. segments',
-      value,
-    );
-  }
-  if (segments.any(
-    (segment) => segment.runes.any((rune) => rune < 0x20 || rune == 0x7f),
-  )) {
-    throw FormatException(
-      'Bundle paths cannot contain control characters',
-      value,
-    );
-  }
 }

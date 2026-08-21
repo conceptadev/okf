@@ -4,6 +4,7 @@ import 'package:yaml/yaml.dart';
 
 import 'metadata.dart';
 import 'yaml_emitter.dart';
+import 'yaml_limits.dart';
 
 /// A failure to split or parse an OKF concept document.
 final class OkfDocumentException implements FormatException {
@@ -342,12 +343,12 @@ final class _YamlConversionState {
 
   Object? convert(Object? value, [int depth = 0]) {
     _nodes++;
-    if (_nodes > 100000) {
+    if (_nodes > maximumYamlNodes) {
       throw const _YamlStructureException(
         'YAML frontmatter exceeds the supported node limit.',
       );
     }
-    if (depth > 200) {
+    if (depth > maximumYamlDepth) {
       throw const _YamlStructureException(
         'YAML frontmatter exceeds the supported nesting depth.',
       );

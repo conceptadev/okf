@@ -37,3 +37,9 @@ a schema-valid but non-conformant change is a refusal carrying the Report.
 - The opaque prepared value binds commit to the exact candidate that passed.
 - Two adapters justify the seam: the MCP verbs now, batch/enrichment harnesses
   later.
+- Shipping order: #3 ships the change *descriptions* only. The preparation
+  results — the immutable candidate, the opaque prepared value, and the
+  refused/ready pair — land with the #16 implementation that produces them.
+  Shipping them earlier meant public types no caller could construct and no
+  test could exercise, which pins a shape without proving it. This Decision
+  is unchanged; only its delivery is deferred.

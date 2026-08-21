@@ -123,6 +123,21 @@ void main() {
       );
     });
 
+    test('reports bundle paths containing C1 control characters', () async {
+      final root = await Directory(
+        p.join(sandbox.path, 'bundle'),
+      ).create();
+      const invalidPath = 'invalid\u0085asset.txt';
+      await _write(root, invalidPath, 'invalid path\n');
+
+      final result = await const OkfBundleLoader().inspect(root.path);
+
+      expect(result.bundle.allPaths, isEmpty);
+      expect(result.issues, hasLength(1));
+      expect(result.issues.single.code, 'invalid_path');
+      expect(result.issues.single.path, invalidPath);
+    });
+
     test('rejects a symbolic-link root', () async {
       if (Platform.isWindows) {
         return;
@@ -251,6 +266,7 @@ void main() {
         'nested/./dot.md',
         r'nested\backslash.md',
         'nested/\u001bescape.md',
+        'nested/\u0085escape.md',
       ]) {
         await expectLater(
           writer.writeAll(root.path, <String, String>{path: 'no'}),

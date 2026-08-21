@@ -104,12 +104,51 @@ void main() {
       throwsArgumentError,
     );
     expect(
+      () => OkfFindingLocation(path: 'concept.md', line: -1),
+      throwsArgumentError,
+    );
+    expect(
       () => OkfFindingLocation(path: 'concept.md', column: 1),
       throwsArgumentError,
     );
     expect(
       () => OkfFindingLocation(path: 'concept.md', line: 1, column: 0),
       throwsArgumentError,
+    );
+    expect(
+      () => OkfFindingLocation(path: 'concept.md', line: 1, column: -1),
+      throwsArgumentError,
+    );
+
+    const malformedPath = '../invalid\\path\n.md';
+    final location = OkfFindingLocation(path: malformedPath);
+    expect(location.path, malformedPath);
+    expect('$location', r'../invalid\path\u{000a}.md');
+  });
+
+  test('finding text escapes controls while JSON retains raw values', () {
+    const path = 'invalid\npath.md';
+    const message = 'First line\nSecond\tline\u0085done';
+    final finding = OkfFinding(
+      id: OkfFindingId.okf('multiline'),
+      severity: OkfFindingSeverity.error,
+      message: message,
+      location: OkfFindingLocation(path: path),
+    );
+    final report = OkfReport(findings: <OkfFinding>[finding]);
+
+    expect(
+      report.toText(),
+      r'invalid\u{000a}path.md: error okf/multiline: First line\u{000a}Second'
+      r'\u{0009}line\u{0085}done',
+    );
+    expect(report.toText().split('\n'), hasLength(1));
+    expect(
+      (report.toJson()['findings']! as List<Object?>).single,
+      allOf(
+        containsPair('message', message),
+        containsPair('location', <String, Object?>{'path': path}),
+      ),
     );
   });
 
@@ -136,6 +175,9 @@ void main() {
       finding('okf/z-rule', 'Early line.', path: 'a.md', line: 2),
       finding('okf/a-rule', 'Later line.', path: 'a.md', line: 9),
       finding('okf/a-rule', 'Same spot, later ID.', path: 'a.md', line: 2),
+      // Differs from the previous finding only by message, so the last
+      // comparison tier is the only thing that can order the pair.
+      finding('okf/a-rule', 'Same spot, earlier text.', path: 'a.md', line: 2),
       finding(
         'okf/a-rule',
         'Same spot, advisory.',
@@ -150,6 +192,7 @@ void main() {
       report.findings.map((item) => item.message),
       orderedEquals(<String>[
         'No location.',
+        'Same spot, earlier text.',
         'Same spot, later ID.',
         'Same spot, advisory.',
         'Early line.',

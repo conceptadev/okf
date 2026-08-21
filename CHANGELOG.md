@@ -1,12 +1,19 @@
 ## 0.2.0
 
 - Add the engine contract types: findings, the immutable OKF Spec report and
-  conformance judgment, adapter verdicts, opaque prepared bundle changes,
-  change descriptions, and index/log entries.
+  conformance judgment, adapter verdicts, change descriptions, and index/log
+  entries.
 - Pin the finding ID grammar to lowercase kebab-case `<namespace>/<code>`
   and hold `OkfReport` findings in one canonical order.
 - Move `OkfIndexEntry` into the index/log model and add value equality to
   index and log entries.
+- Enforce one non-normalizing POSIX grammar across bundle inventories, concept
+  IDs, and file-system adapters.
+- Snapshot bundle change descriptions faithfully, keeping frontmatter value
+  types, key order, and the body verbatim, and reject YAML values no change
+  kind can represent with `ArgumentError`.
+- Validate relationship names, and escape control characters in one-line
+  finding text while retaining raw locations and messages in JSON.
 
 ## 0.1.2
 

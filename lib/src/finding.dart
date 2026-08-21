@@ -1,3 +1,5 @@
+import 'control_characters.dart';
+
 /// A stable finding identifier in `<namespace>/<code>` form.
 ///
 /// Both segments are lowercase kebab-case: one or more `[a-z0-9]` runs
@@ -72,9 +74,13 @@ enum OkfFindingSeverity {
   String get wireValue => name;
 }
 
-/// A logical position within a bundle.
+/// A reported source position associated with a bundle.
 final class OkfFindingLocation {
-  /// Creates a bundle-relative source location.
+  /// Creates a source location.
+  ///
+  /// [path] is retained verbatim so a finding can identify a malformed bundle
+  /// entry. It is diagnostic data, not a path that is safe for file-system
+  /// access. Text projections escape its control characters.
   ///
   /// [line] and [column] are one-based when present, and a column requires
   /// a line.
@@ -104,7 +110,7 @@ final class OkfFindingLocation {
     required this.column,
   });
 
-  /// The logical, bundle-relative path.
+  /// The reported source path, which may identify a malformed bundle entry.
   final String path;
 
   /// The one-based source line, when known.
@@ -134,7 +140,7 @@ final class OkfFindingLocation {
   /// Renders `path`, `path:line`, or `path:line:column`.
   @override
   String toString() {
-    final text = StringBuffer(path);
+    final text = StringBuffer(escapeControlCharacters(path));
     if (line != null) {
       text.write(':$line');
       if (column != null) {
@@ -161,7 +167,8 @@ final class OkfFinding {
   /// How this finding affects conformance.
   final OkfFindingSeverity severity;
 
-  /// A human-readable explanation.
+  /// A human-readable explanation. JSON projections retain it verbatim;
+  /// line-oriented text projections escape control characters.
   final String message;
 
   /// The associated bundle location, when one is available.
@@ -191,7 +198,8 @@ final class OkfFinding {
   @override
   String toString() {
     final prefix = location == null ? '' : '$location: ';
-    return '$prefix${severity.wireValue} $id: $message';
+    return '$prefix${severity.wireValue} $id: '
+        '${escapeControlCharacters(message)}';
   }
 }
 

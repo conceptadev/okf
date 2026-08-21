@@ -1,7 +1,5 @@
-import 'bundle.dart';
 import 'concept_id.dart';
 import 'document.dart';
-import 'finding.dart';
 import 'json_data.dart';
 
 /// A prospective mutation included in an [OkfBundleChangeSet].
@@ -12,14 +10,36 @@ sealed class OkfBundleChange {
 
 /// A request to create a concept from a complete document.
 final class OkfCreateConceptChange extends OkfBundleChange {
-  /// Creates a concept-change description.
-  const OkfCreateConceptChange({required this.id, required this.document});
+  /// Creates a concept-change description, snapshotting [document].
+  ///
+  /// The parts are snapshotted rather than re-serialized so the description
+  /// stays faithful to what the caller supplied: frontmatter values keep
+  /// their runtime types and key order, and the body is retained verbatim.
+  /// Canonicalization belongs to serialization, not to describing a change.
+  /// Values YAML cannot represent are rejected here with [ArgumentError],
+  /// matching [OkfUpdateConceptChange].
+  OkfCreateConceptChange({required this.id, required OkfDocument document})
+      : _frontmatter = deepUnmodifiableJsonMap(document.frontmatter),
+        _body = document.body,
+        _hasFrontmatter = document.hasFrontmatter;
 
   /// The ID for the new concept.
   final OkfConceptId id;
 
-  /// The prospective concept document.
-  final OkfDocument document;
+  final Map<String, Object?> _frontmatter;
+  final String _body;
+  final bool _hasFrontmatter;
+
+  /// A detached copy of the prospective concept document.
+  ///
+  /// Each access returns a new document over the frozen snapshot, so
+  /// mutations made while inspecting one copy cannot change this
+  /// description. Nested frontmatter collections are unmodifiable.
+  OkfDocument get document => OkfDocument(
+        frontmatter: _frontmatter,
+        body: _body,
+        hasFrontmatter: _hasFrontmatter,
+      );
 }
 
 /// A request to update the managed portions of an existing concept.
@@ -46,7 +66,30 @@ final class OkfUpdateConceptChange extends OkfBundleChange {
 /// A request to add a typed relationship between concepts.
 final class OkfLinkConceptsChange extends OkfBundleChange {
   /// Creates a link-change description.
-  const OkfLinkConceptsChange({
+  ///
+  /// Surrounding whitespace is removed from [relationship], whose resulting
+  /// value must not be empty.
+  factory OkfLinkConceptsChange({
+    required OkfConceptId source,
+    required OkfConceptId target,
+    required String relationship,
+  }) {
+    final trimmedRelationship = relationship.trim();
+    if (trimmedRelationship.isEmpty) {
+      throw ArgumentError.value(
+        relationship,
+        'relationship',
+        'must not be empty',
+      );
+    }
+    return OkfLinkConceptsChange._(
+      source: source,
+      target: target,
+      relationship: trimmedRelationship,
+    );
+  }
+
+  const OkfLinkConceptsChange._({
     required this.source,
     required this.target,
     required this.relationship,
@@ -82,82 +125,4 @@ final class OkfBundleChangeSet {
 
   /// The changes in application order.
   final List<OkfBundleChange> changes;
-}
-
-/// An immutable view of the complete candidate prepared for a bundle write.
-///
-/// Concept values are the exact serialized Markdown bytes represented by the
-/// candidate. [toBundle] returns a detached in-memory copy for downstream
-/// inspection; changing that copy cannot change a prepared write.
-final class OkfPreparedCandidate {
-  OkfPreparedCandidate._({
-    required Map<String, String> concepts,
-    required Map<String, String> indexes,
-    required Map<String, String> logs,
-    required Set<String> assets,
-  })  : concepts = Map<String, String>.unmodifiable(concepts),
-        indexes = Map<String, String>.unmodifiable(indexes),
-        logs = Map<String, String>.unmodifiable(logs),
-        assets = Set<String>.unmodifiable(assets);
-
-  /// Serialized concept documents keyed by bundle-relative path.
-  final Map<String, String> concepts;
-
-  /// Serialized index documents keyed by bundle-relative path.
-  final Map<String, String> indexes;
-
-  /// Serialized log documents keyed by bundle-relative path.
-  final Map<String, String> logs;
-
-  /// Asset paths present in the candidate.
-  final Set<String> assets;
-
-  /// Materializes a detached bundle for read-only downstream analysis.
-  OkfBundle toBundle() => OkfBundle.fromDocuments(
-        <String, OkfDocument>{
-          for (final entry in concepts.entries)
-            entry.key: OkfDocument.parse(entry.value, sourcePath: entry.key),
-        },
-        indexes: indexes,
-        logs: logs,
-        assets: assets,
-      );
-}
-
-/// Opaque proof that an exact candidate passed OKF Spec validation.
-///
-/// Only the package's preparation implementation can construct this value.
-final class OkfPreparedChange {
-  const OkfPreparedChange._({
-    required this.candidate,
-    required this.validation,
-  });
-
-  /// The immutable candidate that was validated.
-  final OkfPreparedCandidate candidate;
-
-  /// The closed OKF Spec judgment for [candidate].
-  final OkfSpecValidation validation;
-}
-
-/// The result of preparing an [OkfBundleChangeSet].
-sealed class OkfBundlePreparation {
-  const OkfBundlePreparation._();
-}
-
-/// A candidate refused because it is not OKF Spec-conformant.
-final class OkfPreparationRefused extends OkfBundlePreparation {
-  /// Creates a refusal carrying the candidate's OKF Spec judgment.
-  const OkfPreparationRefused({required this.validation}) : super._();
-
-  /// The non-conformant OKF Spec judgment.
-  final OkfSpecValidation validation;
-}
-
-/// A candidate prepared for inspection and eventual commit.
-final class OkfPreparationReady extends OkfBundlePreparation {
-  const OkfPreparationReady._(this.prepared) : super._();
-
-  /// The opaque prepared change.
-  final OkfPreparedChange prepared;
 }
