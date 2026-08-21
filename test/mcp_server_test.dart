@@ -37,7 +37,7 @@ void main() {
     return harness;
   }
 
-  test('advertises the fixed read tool surface', () async {
+  test('advertises the fixed tool surface', () async {
     await writeConcept(bundle, 'alpha.md');
     final server = await serve();
 
@@ -50,10 +50,22 @@ void main() {
 
     expect(
       byName.keys.toSet(),
-      <String>{'list-concepts', 'lookup-concept', 'query-graph', 'validate'},
+      <String>{
+        'create-concept',
+        'update-concept',
+        'list-concepts',
+        'lookup-concept',
+        'query-graph',
+        'validate',
+      },
     );
-    for (final tool in byName.values) {
-      expect(tool['annotations'], <String, Object?>{
+    for (final tool in <String>[
+      'list-concepts',
+      'lookup-concept',
+      'query-graph',
+      'validate',
+    ]) {
+      expect(byName[tool]!['annotations'], <String, Object?>{
         'readOnlyHint': true,
         'destructiveHint': false,
         'idempotentHint': true,
@@ -64,6 +76,18 @@ void main() {
       byName['query-graph']!['inputSchema'],
       OkfGraphQuery.jsonSchema,
     );
+    expect(byName['create-concept']!['annotations'], <String, Object?>{
+      'readOnlyHint': false,
+      'destructiveHint': false,
+      'idempotentHint': false,
+      'openWorldHint': false,
+    });
+    expect(byName['update-concept']!['annotations'], <String, Object?>{
+      'readOnlyHint': false,
+      'destructiveHint': true,
+      'idempotentHint': true,
+      'openWorldHint': false,
+    });
     expect(await server.awaitDiagnostic(), contains('okf mcp: serving'));
   });
 
@@ -99,12 +123,11 @@ void main() {
       expect(payload['strict'], strict);
     }
 
-    final findings = ((await server.callTool('validate'))['structuredContent']!
-        as Map<String, Object?>)['report']! as Map<String, Object?>;
     expect(
-      (findings['findings']! as List<Object?>)
-          .cast<Map<String, Object?>>()
-          .map((finding) => finding['id']),
+      _findingIds(
+        (await server.callTool('validate'))['structuredContent']!
+            as Map<String, Object?>,
+      ),
       <String>['okf/invalid-status'],
     );
   });
@@ -226,7 +249,7 @@ void main() {
     }
 
     final unknownTool = await server.send('tools/call', const <String, Object?>{
-      'name': 'create-concept',
+      'name': 'link-concepts',
       'arguments': <String, Object?>{},
     });
     expect(unknownTool['error'], isNotNull);
@@ -248,8 +271,15 @@ void main() {
     server.sendRaw('not json at all');
 
     await bundle.delete(recursive: true);
-    final unreadable = await server.callTool('validate');
-    expect(unreadable['isError'], isTrue);
+    for (final unreadable in <Map<String, Object?>>[
+      await server.callTool('validate'),
+      await server.callTool('create-concept', const <String, Object?>{
+        'id': 'gamma',
+        'type': 'Reference',
+      }),
+    ]) {
+      expect(unreadable['isError'], isTrue);
+    }
 
     await bundle.create();
     await writeConcept(bundle, 'alpha.md');
@@ -265,6 +295,246 @@ void main() {
     );
     expect(server.stdoutLines, isNotEmpty);
     expect(server.stdoutLines, everyElement(predicate(_isJsonRpc, 'JSON-RPC')));
+  });
+
+  test('create-concept writes concept, index, and log in one operation',
+      () async {
+    await writeConcept(
+      bundle,
+      'metrics/revenue.md',
+      type: 'Metric',
+      title: 'Revenue',
+      body: '# Revenue',
+    );
+    final server = await serve();
+
+    final result = await server.call('create-concept', <String, Object?>{
+      'id': 'metrics/churn',
+      'type': 'Metric',
+      'title': 'Churn',
+      'description': 'Monthly churn.',
+      'tags': <String>['finance'],
+      'body': '# Churn\n',
+    });
+
+    expect(
+      result['changed_paths'],
+      containsAll(<String>['metrics/churn.md', 'metrics/index.md', 'log.md']),
+    );
+
+    final concept =
+        OkfDocument.parse(await readBundleFile(bundle, 'metrics/churn.md'));
+    expect(concept.type, 'Metric');
+    expect(concept.title, 'Churn');
+    expect(concept.description, 'Monthly churn.');
+    expect(concept.tags, <String>['finance']);
+    expect(concept.body, '# Churn\n');
+
+    expect(
+      OkfIndexDocument.parse(await readBundleFile(bundle, 'metrics/index.md'))
+          .entries,
+      contains(
+        const OkfIndexEntry(
+          type: 'Metric',
+          title: 'Churn',
+          link: 'churn.md',
+          description: 'Monthly churn.',
+        ),
+      ),
+    );
+    final log = OkfLogDocument.parse(await readBundleFile(bundle, 'log.md'));
+    expect(log.entries.single.action, 'Created');
+    expect(log.entries.single.description, '[Churn](metrics/churn.md)');
+
+    final cli = await runCli(<String>['validate', 'bundle'], sandbox.path);
+    expect(
+      cli.exitCode,
+      0,
+      reason: 'the bundle the write path produced must pass the CLI gate',
+    );
+  });
+
+  test('concurrent writes preserve every accepted change', () async {
+    await writeConcept(
+      bundle,
+      'metrics/revenue.md',
+      type: 'Metric',
+      title: 'Revenue',
+      body: '# Revenue',
+    );
+    final server = await serve();
+
+    await Future.wait(<Future<Map<String, Object?>>>[
+      server.call('create-concept', const <String, Object?>{
+        'id': 'metrics/churn',
+        'type': 'Metric',
+        'title': 'Churn',
+      }),
+      server.call('create-concept', const <String, Object?>{
+        'id': 'metrics/margin',
+        'type': 'Metric',
+        'title': 'Margin',
+      }),
+    ]);
+
+    final index = OkfIndexDocument.parse(
+      await readBundleFile(bundle, 'metrics/index.md'),
+    );
+    expect(
+      index.entries.map((entry) => entry.title),
+      containsAll(<String>['Churn', 'Margin', 'Revenue']),
+    );
+    final log = OkfLogDocument.parse(await readBundleFile(bundle, 'log.md'));
+    expect(
+      log.entries.map((entry) => entry.description),
+      containsAll(<String>[
+        '[Churn](metrics/churn.md)',
+        '[Margin](metrics/margin.md)',
+      ]),
+    );
+  });
+
+  test('commits advisory-only changes and separates malformed input', () async {
+    await writeConcept(
+      bundle,
+      'metrics/revenue.md',
+      type: 'Metric',
+      title: 'Revenue',
+      body: '# Revenue',
+    );
+    final server = await serve();
+    final advisory = await server.call('create-concept', <String, Object?>{
+      'id': 'metrics/café',
+      'type': 'Metric',
+      'title': 'Café',
+    });
+    expect(advisory['changed_paths'], contains('metrics/café.md'));
+    expect(
+        await File(p.join(bundle.path, 'metrics', 'café.md')).exists(), isTrue);
+    final validation = await server.call('validate');
+    expect(
+      _findingIds(validation),
+      contains('okf/non-portable-concept-id'),
+    );
+    final before = await snapshotBundle(bundle);
+
+    final rejected = <Map<String, Object?>>[
+      await server.callTool('create-concept', const <String, Object?>{
+        'id': 'metrics/churn',
+      }),
+      await server.callTool('create-concept', const <String, Object?>{
+        'id': 'metrics/churn',
+        'type': 'Metric',
+        'tags': 'finance',
+      }),
+      await server.callTool('update-concept', const <String, Object?>{
+        'id': 'metrics/revenue',
+        'owner': 'finance-team',
+      }),
+      await server.callTool('update-concept', const <String, Object?>{
+        'id': 'metrics/revenue',
+      }),
+      await server.callTool('create-concept', const <String, Object?>{
+        'id': 'metrics/revenue',
+        'type': 'Metric',
+      }),
+      await server.callTool('update-concept', const <String, Object?>{
+        'id': 'metrics/missing',
+        'title': 'Missing',
+      }),
+    ];
+    for (final error in rejected) {
+      expect(error['isError'], isTrue, reason: '${error['content']}');
+      expect(
+        error['structuredContent'],
+        isNull,
+        reason: 'input that describes no bundle state carries no Report',
+      );
+    }
+    expect(await snapshotBundle(bundle), before);
+
+    final idempotent = await server.call(
+      'update-concept',
+      const <String, Object?>{
+        'id': 'metrics/revenue',
+        'title': 'Revenue',
+      },
+    );
+    expect(idempotent['changed_paths'], isEmpty);
+    expect(await snapshotBundle(bundle), before);
+
+    final reserved =
+        await server.callTool('create-concept', const <String, Object?>{
+      'id': 'metrics/index',
+      'type': 'Metric',
+      'title': 'Reserved',
+    });
+    expect(reserved['isError'], isTrue);
+    expect(reserved['structuredContent'], isNull);
+    expect(await snapshotBundle(bundle), before);
+
+    await writeBundleFile(
+      bundle,
+      'log.md',
+      '# Log\n\n* **Created**: [Revenue](metrics/revenue.md)\n',
+    );
+    final broken = await snapshotBundle(bundle);
+    final refusedByLog =
+        await server.callTool('create-concept', const <String, Object?>{
+      'id': 'metrics/churn',
+      'type': 'Metric',
+      'title': 'Churn',
+    });
+    expect(
+      _findingIds(refusedByLog['structuredContent']! as Map<String, Object?>),
+      contains('okf/log-entry-before-date'),
+      reason: 'a log the write path cannot re-emit refuses the whole change',
+    );
+    expect(await snapshotBundle(bundle), broken);
+
+    expect(server.stdoutLines, everyElement(predicate(_isJsonRpc, 'JSON-RPC')));
+  });
+
+  test('update-concept preserves fields the tool does not manage', () async {
+    await writeConcept(
+      bundle,
+      'metrics/revenue.md',
+      type: 'Metric',
+      title: 'Revenue',
+      body: '# Revenue\n\nRecognized on delivery.',
+      frontmatter: const <String>[
+        'description: Monthly revenue.',
+        'owner: finance-team',
+        'review:',
+        '  cadence: quarterly',
+      ],
+    );
+    final server = await serve();
+
+    final result = await server.call('update-concept', <String, Object?>{
+      'id': 'metrics/revenue',
+      'description': 'Recognized monthly revenue.',
+    });
+    expect(
+      result['changed_paths'],
+      containsAll(<String>['metrics/revenue.md', 'log.md']),
+    );
+
+    final document = OkfDocument.parse(
+      await readBundleFile(bundle, 'metrics/revenue.md'),
+    );
+    expect(document.description, 'Recognized monthly revenue.');
+    expect(document.type, 'Metric');
+    expect(document.title, 'Revenue');
+    expect(document.frontmatter['owner'], 'finance-team');
+    expect(
+      document.frontmatter['review'],
+      <String, Object?>{'cadence': 'quarterly'},
+    );
+    expect(document.body, '# Revenue\n\nRecognized on delivery.\n');
+
+    final log = OkfLogDocument.parse(await readBundleFile(bundle, 'log.md'));
+    expect(log.entries.single.action, 'Updated');
   });
 
   test('complete reads refuse a partial bundle while validate inspects it',
@@ -284,8 +554,10 @@ void main() {
       await server.callTool('query-graph'),
     ]) {
       expect(result['isError'], isTrue);
-      expect(jsonEncode(result['structuredContent']),
-          contains('invalid-document'));
+      expect(
+        jsonEncode(result['structuredContent']),
+        contains('invalid-document'),
+      );
     }
 
     final validation = await server.callTool('validate');
@@ -297,6 +569,13 @@ void main() {
     expect(await server.awaitDiagnostic(), contains('1 unreadable file(s)'));
   });
 }
+
+List<String> _findingIds(Map<String, Object?> payload) => <String>[
+      for (final finding in ((payload['report']!
+              as Map<String, Object?>)['findings']! as List<Object?>)
+          .cast<Map<String, Object?>>())
+        finding['id']! as String,
+    ];
 
 bool _isJsonRpc(Object? line) {
   final Object? decoded;

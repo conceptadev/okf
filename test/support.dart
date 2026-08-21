@@ -14,23 +14,54 @@ Future<void> writeConcept(
   String title = 'Alpha',
   String body = '# Alpha',
   List<String> frontmatter = const <String>[],
-}) async {
-  final file = File(
-    p.joinAll(<String>[root.path, ...p.posix.split(relativePath)]),
-  );
+}) =>
+    writeBundleFile(
+      root,
+      relativePath,
+      <String>[
+        '---',
+        if (includeType) 'type: $type',
+        'title: $title',
+        ...frontmatter,
+        '---',
+        '',
+        body,
+        '',
+      ].join('\n'),
+    );
+
+/// Writes [content] at the bundle-relative [relativePath] under [root].
+Future<void> writeBundleFile(
+  Directory root,
+  String relativePath,
+  String content,
+) async {
+  final file = _bundleFile(root, relativePath);
   await file.parent.create(recursive: true);
-  await file.writeAsString(
-    <String>[
-      '---',
-      if (includeType) 'type: $type',
-      'title: $title',
-      ...frontmatter,
-      '---',
-      '',
-      body,
-      '',
-    ].join('\n'),
-  );
+  await file.writeAsString(content);
+}
+
+/// Reads the bundle-relative [relativePath] under [root].
+Future<String> readBundleFile(Directory root, String relativePath) =>
+    _bundleFile(root, relativePath).readAsString();
+
+/// Resolves a bundle-relative POSIX path against [root] for this platform.
+File _bundleFile(Directory root, String relativePath) =>
+    File(p.joinAll(<String>[root.path, ...p.posix.split(relativePath)]));
+
+/// Reads every file under [root], keyed by bundle-relative path.
+///
+/// Comparing two snapshots is how a test proves a refused write left the
+/// bundle untouched, rather than only checking the files it expected.
+Future<Map<String, String>> snapshotBundle(Directory root) async {
+  final files = <String, String>{};
+  await for (final entity in root.list(recursive: true, followLinks: false)) {
+    if (entity is File) {
+      files[p.relative(entity.path, from: root.path)] =
+          await entity.readAsString();
+    }
+  }
+  return files;
 }
 
 /// Runs the CLI in process and collects its streams.

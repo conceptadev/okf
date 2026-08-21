@@ -21,7 +21,7 @@ implementation and is not affiliated with or endorsed by Google.
 - Apply validated change sets that write concept, index, and log atomically.
 - Parse and emit `index.md` and `log.md` entries through one shared model.
 - Export bundle graphs as JSON, DOT, or Mermaid.
-- Serve a read-only Model Context Protocol surface for coding agents.
+- Serve a Model Context Protocol read/write surface for coding agents.
 - Use the APIs without `dart:io`, or import `okf_io.dart` for filesystem
   operations.
 
@@ -105,11 +105,11 @@ action runs on Linux and macOS runners.
 
 ## MCP server
 
-`okf mcp <bundle>` serves a read-only Model Context Protocol surface over
-stdio, so a coding agent can navigate and check a bundle without raw file
-reads. While the server runs, standard output carries JSON-RPC alone and
-every diagnostic goes to standard error. Each call re-reads the bundle, so an
-agent that edits files between calls never sees a stale answer.
+`okf mcp <bundle>` serves a Model Context Protocol surface over stdio, so a
+coding agent can navigate, check, and edit a bundle without raw file reads.
+While the server runs, standard output carries JSON-RPC alone and every
+diagnostic goes to standard error. Each call re-reads the bundle, so an agent
+that edits files between calls never sees a stale answer.
 
 | Tool | Arguments | Returns |
 | --- | --- | --- |
@@ -117,12 +117,39 @@ agent that edits files between calls never sees a stale answer.
 | `lookup-concept` | `id` | One concept, including its canonical Markdown. |
 | `query-graph` | `OkfGraphQuery.jsonSchema` | The versioned graph JSON that `okf graph --output json` emits. |
 | `validate` | `strict` | The Report `okf validate --output json` emits, plus the Verdict's `exit_code`. |
+| `create-concept` | `id`, `type`, `title`, `description`, `tags`, `body` | The bundle-relative paths the write committed. |
+| `update-concept` | `id`, `type`, `title`, `description`, `tags`, `body` | The bundle-relative paths the write committed. |
 
 `validate` returns the same Report as the command line for the same bundle
 and inputs — the same finding IDs, locations, and severities — and `strict`
 is the `--warnings-as-errors` flag, so an agent can
 reproduce the CI gate's judgment before pushing. Arguments are validated
 against each tool's schema; rejected arguments come back as a tool error.
+
+### Writes
+
+`create-concept` and `update-concept` write through `OkfBundleChangeApplier`,
+so one call prepares the concept document and its `index.md` and `log.md`
+entries, commits them under the shared bundle lock, and rolls them back
+together if an ordinary filesystem write fails. `id` is the bundle-relative
+concept ID without the `.md` suffix; `type` is required when creating.
+
+`type`, `title`, `description`, `tags`, and `body` are the fields the verbs
+manage. An update overlays only the arguments it is given and retains every
+other field — `resource`, `verification`, `sources`, and anything else the
+document carries keep their values and their order.
+
+A write is judged before it reaches disk, against the same rules
+`okf validate` runs. Two outcomes are distinguished:
+
+- A change the rules reject is **refused**: the call fails with structured
+  content carrying the Report — the same finding IDs the command line prints
+  for that state — and not one file is changed. Only Spec errors refuse a
+  write; an advisory-only candidate remains conformant and can commit.
+- Input that describes no bundle state is a plain **tool error**, with a
+  message and no Report: a malformed argument, an ID that is not
+  bundle-relative or that would occupy a reserved `index.md` or `log.md` path,
+  creating a concept that already exists, or updating one that does not.
 
 Register the server with an MCP client by pointing it at the executable:
 
@@ -248,9 +275,10 @@ and Markdown content, but YAML comments, anchors, scalar quoting, and
 whitespace style are not retained.
 
 Filesystem link checks assume a quiescent bundle rather than a directory tree
-being concurrently replaced by an adversarial process. Multi-file writes are
-performed independently and do not preserve platform-specific ACLs or extended
-attributes.
+being concurrently replaced by an adversarial process. Prepared multi-file
+writes are rollback-backed, not crash-atomic: destination files are replaced
+independently, so a process or power failure can interrupt the transaction.
+Writes do not preserve platform-specific ACLs or extended attributes.
 
 ## Scope
 
