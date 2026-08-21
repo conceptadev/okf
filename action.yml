@@ -1,0 +1,60 @@
+name: OKF Spec validation
+description: >-
+  Validates an Open Knowledge Format bundle against the OKF Spec with a
+  released okf binary, and fails the job on the verdict the binary returns.
+
+inputs:
+  bundle:
+    description: Path to the bundle to validate.
+    required: false
+    default: .
+  strict:
+    description: Escalate OKF advisories to failures.
+    required: false
+    default: "false"
+  engine-version:
+    description: >-
+      Release tag of the okf engine that runs the validation. Defaults to the
+      ref used to invoke this action.
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - id: workspace
+      shell: bash
+      run: |
+        checkout="$(bash "$GITHUB_ACTION_PATH/tool/ci/needs-checkout.sh" \
+          "$GITHUB_WORKSPACE")"
+        echo "checkout=$checkout" >> "$GITHUB_OUTPUT"
+
+    - if: steps.workspace.outputs.checkout == 'true'
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        clean: false
+        persist-credentials: false
+
+    - id: engine
+      shell: bash
+      env:
+        ENGINE_VERSION: ${{ inputs.engine-version || github.action_ref }}
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        if [ -z "$ENGINE_VERSION" ]; then
+          echo "okf: engine-version is required when the action has no ref" >&2
+          exit 1
+        fi
+        bin="$RUNNER_TEMP/okf-$ENGINE_VERSION"
+        bash "$GITHUB_ACTION_PATH/tool/ci/install-engine.sh" \
+          "$ENGINE_VERSION" "$RUNNER_OS" "$RUNNER_ARCH" "$bin"
+        echo "bin=$bin" >> "$GITHUB_OUTPUT"
+
+    - shell: bash
+      env:
+        OKF: ${{ steps.engine.outputs.bin }}
+        BUNDLE: ${{ inputs.bundle }}
+        STRICT: ${{ inputs.strict }}
+      run: |
+        exec bash "$GITHUB_ACTION_PATH/tool/ci/validate-engine.sh" \
+          "$OKF" "$BUNDLE" "$STRICT"

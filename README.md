@@ -77,6 +77,28 @@ automation:
 okf validate path/to/bundle --output json
 ```
 
+## Continuous integration
+
+Gate a repository on OKF Spec conformance with one step and no configuration:
+
+```yaml
+steps:
+  - uses: conceptadev/okf@v0.2.0
+```
+
+The action downloads the released `okf` binary for the ref in `uses` and runs
+`okf validate` once. Before execution, it verifies the binary against the
+immutable release's signed asset attestation. The job fails on the exit code of
+that single invocation, so CI reaches the same verdict as the command line.
+Inputs:
+
+- `bundle`: the bundle to validate. Defaults to the repository root.
+- `strict`: set to `true` to fail on advisories as well as errors.
+- `engine-version`: override the release tag inferred from the action ref.
+
+Releases attach an `okf-linux-x64` and an `okf-macos-arm64` binary, so the
+action runs on Linux and macOS runners.
+
 ## Library
 
 Use `okf.dart` when working with in-memory documents:
