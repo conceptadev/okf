@@ -1,0 +1,65 @@
+import 'dart:io';
+
+import 'package:okf/src/cli.dart';
+import 'package:path/path.dart' as p;
+
+/// Writes a concept document at [relativePath] under [root].
+///
+/// [frontmatter] holds extra YAML lines appended to the generated block.
+Future<void> writeConcept(
+  Directory root,
+  String relativePath, {
+  bool includeType = true,
+  String type = 'Reference',
+  String title = 'Alpha',
+  String body = '# Alpha',
+  List<String> frontmatter = const <String>[],
+}) async {
+  final file = File(
+    p.joinAll(<String>[root.path, ...p.posix.split(relativePath)]),
+  );
+  await file.parent.create(recursive: true);
+  await file.writeAsString(
+    <String>[
+      '---',
+      if (includeType) 'type: $type',
+      'title: $title',
+      ...frontmatter,
+      '---',
+      '',
+      body,
+      '',
+    ].join('\n'),
+  );
+}
+
+/// Runs the CLI in process and collects its streams.
+Future<CliResult> runCli(
+  List<String> arguments,
+  String workingDirectory,
+) async {
+  final output = <String>[];
+  final errors = <String>[];
+  final exitCode = await runOkfCli(
+    arguments,
+    workingDirectory: workingDirectory,
+    out: output.add,
+    err: errors.add,
+  );
+  return CliResult(exitCode, output.join('\n'), errors.join('\n'));
+}
+
+/// One completed CLI invocation.
+final class CliResult {
+  /// Creates a result from the streams a CLI run produced.
+  const CliResult(this.exitCode, this.stdout, this.stderr);
+
+  /// The process exit code the run returned.
+  final int exitCode;
+
+  /// Every standard output line, joined by newlines.
+  final String stdout;
+
+  /// Every standard error line, joined by newlines.
+  final String stderr;
+}

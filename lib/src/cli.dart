@@ -11,11 +11,10 @@ import 'graph.dart';
 import 'index_generator.dart';
 import 'io/bundle_loader.dart';
 import 'io/bundle_writer.dart';
+import 'mcp/read_server.dart';
 import 'spec_rules/load_findings.dart';
 import 'validator.dart';
-
-/// The package version reported by `okf --version`.
-const okfPackageVersion = '0.2.0';
+import 'version.dart';
 
 /// A destination for one complete CLI output line.
 typedef OkfCliOutput = void Function(String line);
@@ -90,6 +89,7 @@ final class OkfCli {
         'format' => await _format(command),
         'index' => await _index(command),
         'graph' => await _graph(command),
+        'mcp' => await _mcp(command),
         _ => throw _OkfUsageException(
             'Unknown command: ${command.name ?? ''}',
           ),
@@ -295,6 +295,13 @@ final class OkfCli {
     return OkfExitCode.success.value;
   }
 
+  Future<int> _mcp(ArgResults command) async {
+    await OkfMcpServer(
+      rootPath: _resolve(_singleOperand(command)),
+    ).serve();
+    return OkfExitCode.success.value;
+  }
+
   Future<void> _addFormattedFile(
     File file,
     String relativePath,
@@ -348,6 +355,7 @@ Commands:
   format     Canonically format Markdown documents
   index      Generate deterministic bundle indexes
   graph      Render the bundle relationship graph
+  mcp        Serve the read tool surface over MCP stdio
 
 Global options:
 ${_parser.usage}
@@ -469,6 +477,16 @@ ArgParser _buildParser() {
           (resolution) => resolution.wireValue,
         ),
         help: 'Include edges with these resolution states.',
+      ),
+  );
+  parser.addCommand(
+    'mcp',
+    ArgParser()
+      ..addFlag(
+        'help',
+        abbr: 'h',
+        negatable: false,
+        help: 'Show command help.',
       ),
   );
   return parser;

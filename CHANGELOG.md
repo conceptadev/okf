@@ -23,6 +23,10 @@
 - Add composable graph filters for concept type, path prefix, and edge
   resolution.
 - Version and document the graph JSON schema.
+- Add `okf mcp`, a read-only Model Context Protocol server over stdio with the
+  `list-concepts`, `lookup-concept`, `query-graph`, and `validate` tools. Its
+  `validate` tool returns the same Report and Verdict as the command line, and
+  `query-graph` takes the graph filter vocabulary as its input schema.
 - Breaking: `okf validate --output json` replaces the `valid`, `error_count`,
   `warning_count`, and `diagnostics` fields with the Report projection — a
   `findings` array whose entries carry `id`, `severity`, `message`, and
