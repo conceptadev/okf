@@ -18,3 +18,4 @@ behaviour per unit of interface a caller must learn.
 | [0004](0004-index-log-model-single-owner.md) | One module owns the index/log entry format |
 | [0005](0005-single-graph-query-interface.md) | One graph filter vocabulary; CLI and MCP are two adapters |
 | [0006](0006-verdict-judges-loaded-content.md) | The Verdict judges loaded content; usage exits are adapter decisions |
+| [0007](0007-check-mode-exits-are-adapter-decisions.md) | Check-mode "would change" exits are adapter decisions |

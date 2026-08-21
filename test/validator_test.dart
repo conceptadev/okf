@@ -9,6 +9,9 @@ void main() {
         hasFrontmatter: false,
       ),
       'missing-type.md': OkfDocument(),
+      'empty-type.md': OkfDocument(
+        frontmatter: <String, Object?>{'type': '   '},
+      ),
       'numeric-type.md': OkfDocument(
         frontmatter: <String, Object?>{'type': 7, 'unknown': true},
       ),
@@ -17,17 +20,32 @@ void main() {
       ),
     });
 
-    final report = const OkfValidator().validate(bundle);
+    final report = const OkfSpecValidator().validate(bundle).report;
 
-    expect(report.errorCount, 3);
-    expect(report.warningCount, 1);
     expect(
-      report.diagnostics.map((diagnostic) => diagnostic.code),
+      report.findings
+          .where((finding) => finding.severity == OkfFindingSeverity.error),
+      hasLength(4),
+    );
+    expect(
+      report.findings.where(
+        (finding) => finding.severity == OkfFindingSeverity.advisory,
+      ),
+      hasLength(1),
+    );
+    expect(
+      report.findings.map((finding) => finding.id.value),
       containsAll(<String>[
-        'missing_frontmatter',
-        'missing_type',
-        'type_not_string',
+        'okf/missing-frontmatter',
+        'okf/missing-type',
+        'okf/type-not-string',
       ]),
+    );
+    expect(
+      report.findings.where(
+        (finding) => finding.id == OkfFindingId.okf('missing-type'),
+      ),
+      hasLength(3),
     );
   });
 
@@ -62,10 +80,9 @@ okf_version: "0.2"
       },
     );
 
-    final report = const OkfValidator().validate(bundle);
+    final report = const OkfSpecValidator().validate(bundle).report;
 
-    expect(report.isValid, isTrue);
-    expect(report.diagnostics, isEmpty);
+    expect(report.findings, isEmpty);
   });
 
   test('reports reserved structure violations and unknown versions', () {
@@ -99,20 +116,19 @@ Narrative instead of a list item.
       },
     );
 
-    final report = const OkfValidator().validate(bundle);
-    final codes =
-        report.diagnostics.map((diagnostic) => diagnostic.code).toList();
+    final report = const OkfSpecValidator().validate(bundle).report;
+    final codes = report.findings.map((finding) => finding.id.value).toList();
 
-    expect(report.isValid, isFalse);
-    expect(codes, contains('unsupported_okf_version'));
-    expect(codes, contains('invalid_index_frontmatter'));
-    expect(codes, contains('empty_index_section'));
-    expect(codes, contains('invalid_log_frontmatter'));
-    expect(codes, contains('invalid_log_date'));
-    expect(codes, contains('invalid_log_structure'));
+    expect(OkfVerdict.of(report).exitCode, 1);
+    expect(codes, contains('okf/unsupported-okf-version'));
+    expect(codes, contains('okf/invalid-index-frontmatter'));
+    expect(codes, contains('okf/empty-index-section'));
+    expect(codes, contains('okf/invalid-log-frontmatter'));
+    expect(codes, contains('okf/invalid-log-date'));
+    expect(codes, contains('okf/invalid-log-structure'));
   });
 
-  test('optional family shape problems remain warnings', () {
+  test('optional family shape problems remain advisory', () {
     final bundle = OkfBundle.fromDocuments(<String, OkfDocument>{
       '計算.md': OkfDocument(
         frontmatter: <String, Object?>{
@@ -133,10 +149,20 @@ Narrative instead of a list item.
       ),
     });
 
-    final report = const OkfValidator().validate(bundle);
+    final report = const OkfSpecValidator().validate(bundle).report;
 
-    expect(report.isValid, isTrue);
-    expect(report.warningCount, greaterThanOrEqualTo(9));
-    expect(report.toJson()['valid'], isTrue);
+    expect(OkfVerdict.of(report).exitCode, 0);
+    expect(
+      report.findings
+          .where(
+            (finding) => finding.severity == OkfFindingSeverity.advisory,
+          )
+          .length,
+      greaterThanOrEqualTo(9),
+    );
+    expect(
+      (report.toJson()['findings']! as List<Object?>).first,
+      containsPair('id', startsWith('okf/')),
+    );
   });
 }

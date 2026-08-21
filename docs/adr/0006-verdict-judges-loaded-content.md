@@ -1,6 +1,6 @@
 # ADR-0006: The Verdict judges loaded content; usage exits are adapter decisions
 
-- Status: accepted
+- Status: accepted, amended by [ADR-0007](0007-check-mode-exits-are-adapter-decisions.md)
 - Date: 2026-08-14
 - Amends: [ADR-0001](0001-one-finding-contract.md)
 - Issues: [#3](https://github.com/conceptadev/okf/issues/3), #4

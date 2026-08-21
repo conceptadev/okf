@@ -73,7 +73,7 @@ void main() {
       );
       expect(result.bundle.concepts.length, 2);
       expect(result.bundle.assetPaths, contains('assets/query.sql'));
-      expect(result.hasIssues, isFalse);
+      expect(result.hasFindings, isFalse);
     });
 
     test('reports every malformed concept and returns a partial bundle',
@@ -98,15 +98,18 @@ void main() {
 
       expect(result.bundle.concepts.length, 1);
       expect(
-        result.issues.map((issue) => issue.path),
+        result.report.findings.map((finding) => finding.location?.path),
         orderedEquals(<String>['broken.md', 'invalid.md']),
       );
       expect(
-        result.issues.map((issue) => issue.code),
-        orderedEquals(<String>['invalid_document', 'invalid_utf8']),
+        result.report.findings.map((finding) => finding.id.value),
+        orderedEquals(<String>[
+          'okf/invalid-document',
+          'okf/invalid-utf8',
+        ]),
       );
-      expect(result.issues.first.line, isNotNull);
-      expect(result.issues.first.column, isNotNull);
+      expect(result.report.findings.first.location?.line, isNotNull);
+      expect(result.report.findings.first.location?.column, isNotNull);
       expect(
         result.paths,
         containsAll(<String>['broken.md', 'invalid.md', 'valid.md']),
@@ -115,12 +118,36 @@ void main() {
         const OkfBundleLoader().load(root.path),
         throwsA(
           isA<OkfBundleLoadException>().having(
-            (error) => error.result.issues.length,
-            'issue count',
+            (error) => error.result.report.findings.length,
+            'finding count',
             2,
           ),
         ),
       );
+    });
+
+    test('validate merges load findings with fixed Spec findings', () async {
+      final root = await Directory(
+        p.join(sandbox.path, 'bundle'),
+      ).create();
+      await _write(root, 'valid.md', '---\ntype: Reference\n---\n\nValid\n');
+      await _write(root, 'broken.md', '---\ntype: Reference\nbad: [\n');
+      await _write(root, 'untyped.md', '---\ntitle: Untyped\n---\n');
+
+      final result = await const OkfBundleLoader().inspect(root.path);
+      final validation = result.validate();
+      final report = validation.report;
+
+      expect(
+        report.findings.map((finding) => '${finding.id}'),
+        orderedEquals(<String>[
+          'okf/invalid-document',
+          'okf/missing-type',
+        ]),
+      );
+      expect(report.findings.last.location?.path, 'untyped.md');
+      expect(validation.isConformant, isFalse);
+      expect(OkfVerdict.of(report).exitCode, 1);
     });
 
     test('reports bundle paths containing C1 control characters', () async {
@@ -133,9 +160,9 @@ void main() {
       final result = await const OkfBundleLoader().inspect(root.path);
 
       expect(result.bundle.allPaths, isEmpty);
-      expect(result.issues, hasLength(1));
-      expect(result.issues.single.code, 'invalid_path');
-      expect(result.issues.single.path, invalidPath);
+      expect(result.report.findings, hasLength(1));
+      expect(result.report.findings.single.id.value, 'okf/invalid-path');
+      expect(result.report.findings.single.location?.path, invalidPath);
     });
 
     test('rejects a symbolic-link root', () async {

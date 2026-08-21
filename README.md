@@ -40,14 +40,16 @@ dart pub global activate okf
 
 ```console
 okf validate path/to/bundle
+okf validate path/to/bundle --strict
 okf format path/to/bundle --check
 okf index path/to/bundle --check
 okf graph path/to/bundle --output mermaid
 ```
 
 Commands use exit code `0` for success, `1` for a conformance or check
-failure, and `2` for invalid invocation or I/O failure. Validation can be
-emitted as JSON for automation:
+failure, and `2` for invalid invocation or I/O failure. Advisory findings
+fail validation only under `--strict`. Validation can be emitted as JSON for
+automation:
 
 ```console
 okf validate path/to/bundle --output json
@@ -79,25 +81,52 @@ Filesystem operations live in the separate `okf_io.dart` library:
 import 'package:okf/okf_io.dart';
 
 final result = await const OkfBundleLoader().inspect('path/to/bundle');
-final report = const OkfValidator().validate(result.bundle);
+final validation = result.validate();
+final report = validation.report;
+final verdict = OkfVerdict.of(report);
 final graph = OkfGraph.fromBundle(result.bundle);
 
-print('${report.errorCount} errors, ${graph.edges.length} relationships');
+print(
+  '${report.findings.length} findings, '
+  '${graph.edges.length} relationships, exit ${verdict.exitCode}',
+);
 ```
 
 See [`example/okf.dart`][example] for a complete command-line example.
 
+### Findings and rules
+
+Every finding carries a stable `okf/<code>` ID (for example
+`okf/missing-type`). The package exposes read-only rule descriptors with
+prose, severity, and pinned-Spec references; executable rules remain fixed
+inside `OkfSpecValidator`. Text output renders one line per finding
+(`path[:line[:column]]: severity okf/code: message`); JSON output is the
+Report projection — a `findings` array whose entries carry `id`,
+`severity`, `message`, and `location`.
+
+For the same bundle, OKF Spec validation always produces the same result; it
+accepts no rule catalog, suppression, strictness, or downstream parameters.
+Downstream packages run their own checks separately and combine acceptance at
+their own boundary.
+
+```dart
+final validation = const OkfSpecValidator().validate(bundle);
+if (validation.isConformant) {
+  // Run downstream checks against the same candidate separately.
+}
+```
+
 ## Compatibility principles
 
 OKF intentionally requires very little. This package therefore separates
-hard conformance errors from advisory diagnostics:
+hard conformance errors from advisory findings:
 
 - Unknown concept types and extension keys are preserved.
 - Missing optional trust or provenance fields never invalidate a concept.
 - A bare `verified` mapping is treated as a one-element list.
 - Broken links remain visible as unresolved graph edges.
 - Unknown bundle versions are consumed on a best-effort basis.
-- Unicode concept IDs are accepted when safe; an advisory diagnostic marks
+- Unicode concept IDs are accepted when safe; an advisory finding marks
   IDs that may be less portable across producers.
 
 Formatting is semantic rather than byte-preserving. It retains unknown data

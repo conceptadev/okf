@@ -6,12 +6,12 @@ import 'package:args/args.dart';
 import 'package:path/path.dart' as p;
 
 import 'control_characters.dart';
-import 'diagnostic.dart';
-import 'document.dart';
+import 'finding.dart';
 import 'graph.dart';
 import 'index_generator.dart';
 import 'io/bundle_loader.dart';
 import 'io/bundle_writer.dart';
+import 'spec_rules/load_findings.dart';
 import 'validator.dart';
 
 /// The package version reported by `okf --version`.
@@ -69,11 +69,11 @@ final class OkfCli {
       final results = _parser.parse(arguments);
       if (results.flag('version')) {
         _out('okf $okfPackageVersion');
-        return 0;
+        return OkfExitCode.success.value;
       }
       if (results.flag('help')) {
         _out(_rootUsage());
-        return 0;
+        return OkfExitCode.success.value;
       }
 
       final command = results.command;
@@ -82,7 +82,7 @@ final class OkfCli {
       }
       if (command.flag('help')) {
         _out(_commandUsage(command.name ?? ''));
-        return 0;
+        return OkfExitCode.success.value;
       }
 
       return switch (command.name) {
@@ -97,62 +97,42 @@ final class OkfCli {
     } on ArgParserException catch (error) {
       _err('okf: ${_terminalSafe(error.message)}');
       _err('Run "okf --help" for usage.');
-      return 2;
+      return OkfExitCode.usage.value;
     } on _OkfUsageException catch (error) {
       _err('okf: ${_terminalSafe(error.message)}');
       _err('Run "okf --help" for usage.');
-      return 2;
+      return OkfExitCode.usage.value;
     } on FileSystemException catch (error) {
       _err('okf: ${_fileSystemMessage(error)}');
-      return 2;
+      return OkfExitCode.usage.value;
     } on ArgumentError catch (error) {
       _err('okf: ${_terminalSafe('${error.message ?? error}')}');
-      return 2;
+      return OkfExitCode.usage.value;
     } on Exception catch (error) {
       _err('okf: ${_terminalSafe('$error')}');
-      return 2;
+      return OkfExitCode.usage.value;
     }
   }
 
   Future<int> _validate(ArgResults command) async {
     final target = _singleOperand(command);
     final result = await _loader.inspect(_resolve(target));
-    final diagnostics = <_CliDiagnostic>[
-      ...result.issues.map(_CliDiagnostic.fromLoadIssue),
-      ...OkfValidator()
-          .validate(result.bundle)
-          .diagnostics
-          .map(_CliDiagnostic.fromDiagnostic),
-    ]..sort(_compareDiagnostics);
-
-    final warningsAsErrors = command.flag('warnings-as-errors');
-    final errors = diagnostics.where((item) => item.severity == 'error').length;
-    final warnings =
-        diagnostics.where((item) => item.severity == 'warning').length;
-    final valid = errors == 0 && (!warningsAsErrors || warnings == 0);
+    final report = result.validate().report;
+    final verdict = OkfVerdict.of(report, strict: command.flag('strict'));
 
     if (command.option('output') == 'json') {
       _out(
-        const JsonEncoder.withIndent('  ').convert(
-          <String, Object?>{
-            'valid': valid,
-            'error_count': errors,
-            'warning_count': warnings,
-            'diagnostics': diagnostics.map((item) => item.toJson()).toList(),
-          },
-        ),
+        const JsonEncoder.withIndent('  ').convert(report.toJson()),
       );
     } else {
-      for (final diagnostic in diagnostics) {
-        _out(diagnostic.toText());
-      }
-      if (diagnostics.isEmpty) {
+      _emitReport(report);
+      if (report.findings.isEmpty) {
         _out(
           'OK: ${result.bundle.concepts.length} concept(s) validated.',
         );
       }
     }
-    return valid ? 0 : 1;
+    return verdict.exitCode;
   }
 
   Future<int> _format(ArgResults command) async {
@@ -171,7 +151,7 @@ final class OkfCli {
 
     late final String rootPath;
     final desired = <String, String>{};
-    final diagnostics = <_CliDiagnostic>[];
+    final findings = <OkfFinding>[];
     if (type == FileSystemEntityType.file) {
       if (!targetPath.endsWith('.md')) {
         throw const _OkfUsageException(
@@ -184,14 +164,12 @@ final class OkfCli {
         File(targetPath),
         relativePath,
         desired,
-        diagnostics,
+        findings,
       );
     } else if (type == FileSystemEntityType.directory) {
       rootPath = targetPath;
       final loaded = await _loader.inspect(rootPath);
-      diagnostics.addAll(
-        loaded.issues.map(_CliDiagnostic.fromLoadIssue),
-      );
+      findings.addAll(loaded.report.findings);
       for (final entry in loaded.documents.entries) {
         desired[entry.key] = entry.value.serialize();
       }
@@ -200,7 +178,7 @@ final class OkfCli {
           entry.value,
           entry.key,
           desired,
-          diagnostics,
+          findings,
         );
       }
       for (final entry in loaded.logs.entries) {
@@ -208,19 +186,17 @@ final class OkfCli {
           entry.value,
           entry.key,
           desired,
-          diagnostics,
+          findings,
         );
       }
     } else {
       throw FileSystemException('Path does not exist', targetPath);
     }
 
-    diagnostics.sort(_compareDiagnostics);
-    if (diagnostics.isNotEmpty) {
-      for (final diagnostic in diagnostics) {
-        _out(diagnostic.toText());
-      }
-      return 1;
+    final report = OkfReport(findings: findings);
+    if (report.findings.isNotEmpty) {
+      _emitReport(report);
+      return OkfVerdict.of(report).exitCode;
     }
 
     final checkOnly = command.flag('check');
@@ -233,7 +209,8 @@ final class OkfCli {
       for (final path in writeResult.changedPaths) {
         _out('Would format $path');
       }
-      return 1;
+      // A check-mode exit is an adapter decision (ADR-0007).
+      return OkfExitCode.findings.value;
     }
 
     if (writeResult.hasChanges) {
@@ -241,7 +218,7 @@ final class OkfCli {
     } else {
       _out('Already formatted.');
     }
-    return 0;
+    return OkfExitCode.success.value;
   }
 
   Future<int> _index(ArgResults command) async {
@@ -251,27 +228,19 @@ final class OkfCli {
       loaded.bundle,
       declareVersion: command.option('declare-version'),
     );
-    final diagnostics = <_CliDiagnostic>[
-      ...loaded.issues.map(_CliDiagnostic.fromLoadIssue),
-      ...OkfValidator().validate(loaded.bundle).diagnostics.where(
-        (item) {
-          if (item.severity != OkfDiagnosticSeverity.error) {
-            return false;
-          }
-          final basename = p.posix.basename(item.path ?? '');
-          if (basename == 'log.md') {
-            // Logs are excluded from index discovery and generation.
-            return false;
-          }
-          return basename != 'index.md' || !generated.containsKey(item.path);
-        },
-      ).map(_CliDiagnostic.fromDiagnostic),
-    ]..sort(_compareDiagnostics);
-    if (diagnostics.isNotEmpty) {
-      for (final diagnostic in diagnostics) {
-        _out(diagnostic.toText());
-      }
-      return 1;
+    // Load failures always block; validation only blocks on errors outside
+    // the files index generation owns (generated indexes) or ignores (logs).
+    final report = OkfReport(findings: <OkfFinding>[
+      ...loaded.report.findings,
+      ...const OkfSpecValidator()
+          .validate(loaded.bundle)
+          .report
+          .findings
+          .where((finding) => _blocksIndexGeneration(finding, generated)),
+    ]);
+    if (report.findings.isNotEmpty) {
+      _emitReport(report);
+      return OkfVerdict.of(report).exitCode;
     }
 
     final checkOnly = command.flag('check');
@@ -284,7 +253,8 @@ final class OkfCli {
       for (final path in writeResult.changedPaths) {
         _out('Index is stale: $path');
       }
-      return 1;
+      // A check-mode exit is an adapter decision (ADR-0007).
+      return OkfExitCode.findings.value;
     }
 
     if (writeResult.hasChanges) {
@@ -292,21 +262,15 @@ final class OkfCli {
     } else {
       _out('Indexes are current.');
     }
-    return 0;
+    return OkfExitCode.success.value;
   }
 
   Future<int> _graph(ArgResults command) async {
     final target = _resolve(_singleOperand(command));
     final loaded = await _loader.inspect(target);
-    if (loaded.hasIssues) {
-      final diagnostics = loaded.issues
-          .map(_CliDiagnostic.fromLoadIssue)
-          .toList()
-        ..sort(_compareDiagnostics);
-      for (final diagnostic in diagnostics) {
-        _out(diagnostic.toText());
-      }
-      return 1;
+    if (loaded.hasFindings) {
+      _emitReport(loaded.report);
+      return OkfVerdict.of(loaded.report).exitCode;
     }
 
     final graph = OkfGraph.fromBundle(loaded.bundle);
@@ -319,30 +283,22 @@ final class OkfCli {
     _out(output.endsWith('\n')
         ? output.substring(0, output.length - 1)
         : output);
-    return 0;
+    return OkfExitCode.success.value;
   }
 
   Future<void> _addFormattedFile(
     File file,
     String relativePath,
     Map<String, String> desired,
-    List<_CliDiagnostic> diagnostics,
+    List<OkfFinding> findings,
   ) async {
-    try {
-      final source = utf8.decode(
-        await file.readAsBytes(),
-        allowMalformed: false,
-      );
-      _addFormattedSource(source, relativePath, desired, diagnostics);
-    } on FormatException catch (error) {
-      diagnostics.add(
-        _CliDiagnostic(
-          code: 'invalid_utf8',
-          severity: 'error',
-          message: error.message,
-          path: relativePath,
-        ),
-      );
+    final source = decodeMarkdown(
+      await file.readAsBytes(),
+      relativePath,
+      findings,
+    );
+    if (source != null) {
+      _addFormattedSource(source, relativePath, desired, findings);
     }
   }
 
@@ -350,35 +306,15 @@ final class OkfCli {
     String source,
     String relativePath,
     Map<String, String> desired,
-    List<_CliDiagnostic> diagnostics,
+    List<OkfFinding> findings,
   ) {
-    try {
-      desired[relativePath] = OkfDocument.parse(
-        source,
-        sourcePath: relativePath,
-      ).serialize();
-    } on OkfDocumentException catch (error) {
-      diagnostics.add(
-        _CliDiagnostic(
-          code: 'invalid_document',
-          severity: 'error',
-          message: error.message,
-          path: relativePath,
-          line: error.line,
-          column: error.column,
-        ),
-      );
-    } on FormatException catch (error) {
-      diagnostics.add(
-        _CliDiagnostic(
-          code: 'invalid_document',
-          severity: 'error',
-          message: error.message,
-          path: relativePath,
-        ),
-      );
+    final document = parseMarkdown(source, relativePath, findings);
+    if (document != null) {
+      desired[relativePath] = document.serialize();
     }
   }
+
+  void _emitReport(OkfReport report) => report.toTextLines().forEach(_out);
 
   String _singleOperand(ArgResults command) {
     if (command.rest.length != 1) {
@@ -449,9 +385,10 @@ ArgParser _buildParser() {
         help: 'Diagnostic output format.',
       )
       ..addFlag(
-        'warnings-as-errors',
+        'strict',
         negatable: false,
-        help: 'Return failure when warnings are present.',
+        aliases: <String>['warnings-as-errors'],
+        help: 'Fail on advisory findings as well as errors.',
       ),
   );
   parser.addCommand(
@@ -508,85 +445,25 @@ ArgParser _buildParser() {
   return parser;
 }
 
-final class _CliDiagnostic {
-  const _CliDiagnostic({
-    required this.code,
-    required this.severity,
-    required this.message,
-    this.path,
-    this.line,
-    this.column,
-  });
-
-  factory _CliDiagnostic.fromDiagnostic(OkfDiagnostic diagnostic) =>
-      _CliDiagnostic(
-        code: diagnostic.code,
-        severity: diagnostic.severity.name,
-        message: diagnostic.message,
-        path: diagnostic.path,
-        line: diagnostic.line,
-        column: diagnostic.column,
-      );
-
-  factory _CliDiagnostic.fromLoadIssue(OkfBundleLoadIssue issue) =>
-      _CliDiagnostic(
-        code: issue.code,
-        severity: 'error',
-        message: issue.message,
-        path: issue.path,
-        line: issue.line,
-        column: issue.column,
-      );
-
-  final String code;
-  final String severity;
-  final String message;
-  final String? path;
-  final int? line;
-  final int? column;
-
-  Map<String, Object?> toJson() => <String, Object?>{
-        'code': code,
-        'severity': severity,
-        'message': message,
-        if (path != null) 'path': path,
-        if (line != null) 'line': line,
-        if (column != null) 'column': column,
-      };
-
-  String toText() {
-    final location = StringBuffer(_terminalSafe(path ?? '<bundle>'));
-    if (line != null) {
-      location.write(':$line');
-      if (column != null) {
-        location.write(':$column');
-      }
-    }
-    return '$location: ${_terminalSafe(severity)} '
-        '${_terminalSafe(code)}: ${_terminalSafe(message)}';
+bool _blocksIndexGeneration(
+  OkfFinding finding,
+  Map<String, String> generated,
+) {
+  if (finding.severity != OkfFindingSeverity.error) {
+    return false;
   }
+  final path = finding.location?.path ?? '';
+  return switch (p.posix.basename(path)) {
+    'log.md' => false,
+    'index.md' => !generated.containsKey(path),
+    _ => true,
+  };
 }
 
 final class _OkfUsageException implements Exception {
   const _OkfUsageException(this.message);
 
   final String message;
-}
-
-int _compareDiagnostics(_CliDiagnostic left, _CliDiagnostic right) {
-  var comparison = (left.path ?? '').compareTo(right.path ?? '');
-  if (comparison != 0) {
-    return comparison;
-  }
-  comparison = (left.line ?? 0).compareTo(right.line ?? 0);
-  if (comparison != 0) {
-    return comparison;
-  }
-  comparison = (left.column ?? 0).compareTo(right.column ?? 0);
-  if (comparison != 0) {
-    return comparison;
-  }
-  return left.code.compareTo(right.code);
 }
 
 String _fileSystemMessage(FileSystemException error) {

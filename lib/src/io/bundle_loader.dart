@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:collection';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -8,51 +7,16 @@ import 'package:path/path.dart' as p;
 import '../bundle.dart';
 import '../bundle_path.dart';
 import '../document.dart';
-
-/// A document that could not be decoded or parsed while loading a bundle.
-final class OkfBundleLoadIssue {
-  /// Creates a bundle loading issue.
-  const OkfBundleLoadIssue({
-    required this.code,
-    required this.message,
-    required this.path,
-    this.line,
-    this.column,
-  });
-
-  /// A stable, machine-readable issue code.
-  final String code;
-
-  /// A human-readable description of the issue.
-  final String message;
-
-  /// The POSIX-style path relative to the bundle root.
-  final String path;
-
-  /// One-based source line, when the parser supplied one.
-  final int? line;
-
-  /// One-based source column, when the parser supplied one.
-  final int? column;
-
-  @override
-  String toString() {
-    final location = StringBuffer(path);
-    if (line != null) {
-      location.write(':$line');
-      if (column != null) {
-        location.write(':$column');
-      }
-    }
-    return '$location: $code: $message';
-  }
-}
+import '../finding.dart';
+import '../spec_rules/load_findings.dart';
+import '../validator.dart';
 
 /// The result of inspecting an OKF bundle directory.
 ///
-/// [bundle] contains every entry that could be read successfully. Parse and
-/// UTF-8 failures are retained in [issues], allowing validators to report all
-/// malformed files in one invocation.
+/// [bundle] contains every entry that could be read successfully. Path,
+/// UTF-8, and document parse failures are retained in [report], so one
+/// invocation can report every malformed file; [validate] merges them with
+/// the validator's findings into the complete Report.
 final class OkfBundleLoadResult {
   OkfBundleLoadResult({
     required this.rootPath,
@@ -61,12 +25,11 @@ final class OkfBundleLoadResult {
     required Map<String, String> indexes,
     required Map<String, String> logs,
     required Iterable<String> assets,
-    required Iterable<OkfBundleLoadIssue> issues,
+    required this.report,
   })  : documents = UnmodifiableMapView<String, OkfDocument>(Map.of(documents)),
         indexes = UnmodifiableMapView<String, String>(Map.of(indexes)),
         logs = UnmodifiableMapView<String, String>(Map.of(logs)),
-        assets = List<String>.unmodifiable(assets),
-        issues = List<OkfBundleLoadIssue>.unmodifiable(issues);
+        assets = List<String>.unmodifiable(assets);
 
   /// The normalized, absolute bundle root.
   final String rootPath;
@@ -86,8 +49,11 @@ final class OkfBundleLoadResult {
   /// Non-Markdown files found under the bundle root.
   final List<String> assets;
 
-  /// Decode and document parse failures, ordered by relative path.
-  final List<OkfBundleLoadIssue> issues;
+  /// Load-time findings only — files that could not be read as part of
+  /// the bundle — in canonical Report order.
+  ///
+  /// This is not the bundle's complete Report; see [validate].
+  final OkfReport report;
 
   /// Every regular file path in the inventory, in deterministic order.
   List<String> get paths {
@@ -96,14 +62,30 @@ final class OkfBundleLoadResult {
       ...indexes.keys,
       ...logs.keys,
       ...assets,
-      ...issues.map((issue) => issue.path),
+      ...report.findings.map((finding) => finding.location?.path).nonNulls,
     }.toList()
       ..sort();
     return List<String>.unmodifiable(result);
   }
 
-  /// Whether any files failed to load.
-  bool get hasIssues => issues.isNotEmpty;
+  /// Whether any file failed to load, so [bundle] is partial.
+  bool get hasFindings => report.findings.isNotEmpty;
+
+  /// Validates the loaded bundle and merges load findings into one Report.
+  ///
+  /// This is the complete Report for the bundle — the projection every
+  /// adapter surfaces — in the canonical Report order.
+  OkfSpecValidation validate() {
+    final validation = const OkfSpecValidator().validate(bundle);
+    return OkfSpecValidation(
+      OkfReport(
+        findings: <OkfFinding>[
+          ...report.findings,
+          ...validation.report.findings,
+        ],
+      ),
+    );
+  }
 }
 
 /// Thrown by [OkfBundleLoader.load] when inspection finds malformed files.
@@ -115,7 +97,8 @@ final class OkfBundleLoadException implements Exception {
 
   @override
   String toString() =>
-      'Could not load OKF bundle: ${result.issues.length} file(s) failed';
+      'Could not load OKF bundle: ${result.report.findings.length} '
+      'file(s) failed';
 }
 
 /// Loads OKF bundles from an explicitly supplied filesystem root.
@@ -131,10 +114,10 @@ final class OkfBundleLoader {
   ///
   /// Throws [OkfBundleLoadException] after scanning the entire tree when one
   /// or more Markdown concepts could not be decoded or parsed. Use [inspect]
-  /// to consume the successfully loaded portion alongside those issues.
+  /// to consume the successfully loaded portion alongside those findings.
   Future<OkfBundle> load(String rootPath) async {
     final result = await inspect(rootPath);
-    if (result.hasIssues) {
+    if (result.hasFindings) {
       throw OkfBundleLoadException(result);
     }
     return result.bundle;
@@ -165,17 +148,16 @@ final class OkfBundleLoader {
     final indexes = <String, String>{};
     final logs = <String, String>{};
     final assets = <String>[];
-    final issues = <OkfBundleLoadIssue>[];
+    final findings = <OkfFinding>[];
 
     for (final entry in entities) {
       try {
         validateBundlePath(entry.relativePath);
       } on FormatException catch (error) {
-        issues.add(
-          OkfBundleLoadIssue(
-            code: 'invalid_path',
+        findings.add(
+          invalidPathFinding.finding(
             message: error.message,
-            path: entry.relativePath,
+            location: OkfFindingLocation(path: entry.relativePath),
           ),
         );
         continue;
@@ -186,20 +168,12 @@ final class OkfBundleLoader {
         continue;
       }
 
-      late final String source;
-      try {
-        source = utf8.decode(
-          await entry.file.readAsBytes(),
-          allowMalformed: false,
-        );
-      } on FormatException catch (error) {
-        issues.add(
-          OkfBundleLoadIssue(
-            code: 'invalid_utf8',
-            message: error.message,
-            path: entry.relativePath,
-          ),
-        );
+      final source = decodeMarkdown(
+        await entry.file.readAsBytes(),
+        entry.relativePath,
+        findings,
+      );
+      if (source == null) {
         continue;
       }
 
@@ -213,29 +187,9 @@ final class OkfBundleLoader {
         continue;
       }
 
-      try {
-        documents[entry.relativePath] = OkfDocument.parse(
-          source,
-          sourcePath: entry.relativePath,
-        );
-      } on OkfDocumentException catch (error) {
-        issues.add(
-          OkfBundleLoadIssue(
-            code: 'invalid_document',
-            message: error.message,
-            path: entry.relativePath,
-            line: error.line,
-            column: error.column,
-          ),
-        );
-      } on FormatException catch (error) {
-        issues.add(
-          OkfBundleLoadIssue(
-            code: 'invalid_document',
-            message: error.message,
-            path: entry.relativePath,
-          ),
-        );
+      final document = parseMarkdown(source, entry.relativePath, findings);
+      if (document != null) {
+        documents[entry.relativePath] = document;
       }
     }
 
@@ -252,7 +206,7 @@ final class OkfBundleLoader {
       indexes: indexes,
       logs: logs,
       assets: assets,
-      issues: issues,
+      report: OkfReport(findings: findings),
     );
   }
 

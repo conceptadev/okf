@@ -248,7 +248,11 @@ final class OkfReport {
   }
 
   /// Projects this report as deterministic, line-oriented text.
-  String toText() => findings.join('\n');
+  String toText() => toTextLines().join('\n');
+
+  /// The text projection one finding per line, for adapters that write
+  /// lines individually.
+  Iterable<String> toTextLines() => findings.map((finding) => '$finding');
 
   /// Projects this report as a JSON-compatible object.
   Map<String, Object?> toJson() => <String, Object?>{
