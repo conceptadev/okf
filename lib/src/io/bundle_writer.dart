@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 
 import '../bundle_path.dart';
 import '../document.dart';
+import 'bundle_apply_lock.dart';
 
 /// The outcome of writing or checking a set of bundle files.
 final class OkfWriteResult {
@@ -19,6 +20,27 @@ final class OkfWriteResult {
 
   /// Whether at least one file differed.
   bool get hasChanges => changedPaths.isNotEmpty;
+}
+
+/// A write failed and one or more compensating filesystem operations failed.
+final class OkfWriteRollbackException implements Exception {
+  /// Creates a rollback failure that retains both the write and recovery
+  /// errors.
+  OkfWriteRollbackException({
+    required this.writeError,
+    required Iterable<Object> rollbackErrors,
+  }) : rollbackErrors = List<Object>.unmodifiable(rollbackErrors);
+
+  /// The error that interrupted the original write.
+  final Object writeError;
+
+  /// Errors encountered while restoring files and directories.
+  final List<Object> rollbackErrors;
+
+  @override
+  String toString() =>
+      'OkfWriteRollbackException: $writeError; rollback errors: '
+      '${rollbackErrors.join('; ')}';
 }
 
 /// Writes files beneath an explicit OKF bundle root.
@@ -55,25 +77,107 @@ final class OkfBundleWriter {
     Map<String, String> files, {
     bool checkOnly = false,
   }) async {
-    final root = await _validatedRoot(
-      rootPath,
-      createIfMissing: !checkOnly,
-    );
-    final validatedFiles = SplayTreeMap<String, String>();
+    if (checkOnly) {
+      final root = await _validatedRoot(rootPath, createIfMissing: false);
+      return _writeAll(
+        root,
+        _normalizeFiles(files),
+        checkOnly: true,
+      );
+    }
+    await _createRootParent(rootPath);
+    return OkfBundleApplyLock.synchronized(rootPath, () async {
+      final root = await _validatedRoot(rootPath, createIfMissing: true);
+      return _writeAll(
+        root,
+        _normalizeFiles(files),
+        checkOnly: false,
+      );
+    });
+  }
+
+  Future<OkfWriteResult> _writeAllTransactionally(
+    String rootPath,
+    Map<String, String> files,
+  ) async {
+    final root = await _validatedRoot(rootPath, createIfMissing: true);
+    final normalizedFiles = _normalizeFiles(files);
+    final captured = await _capture(root, normalizedFiles.keys);
+    final staged = <_StagedFile>[];
+    var applying = false;
+
+    try {
+      for (final entry in normalizedFiles.entries) {
+        final destination = _destination(root, entry.key);
+        await _rejectLinks(root, entry.key);
+        final desiredBytes = utf8.encode(entry.value);
+        final currentBytes =
+            await destination.exists() ? await destination.readAsBytes() : null;
+        if (_bytesEqual(currentBytes, desiredBytes)) {
+          continue;
+        }
+
+        await destination.parent.create(recursive: true);
+        await _rejectLinks(root, entry.key);
+        staged.add(
+          _StagedFile(
+            path: entry.key,
+            destination: destination,
+            temporary: await _stageWrite(destination, desiredBytes),
+          ),
+        );
+      }
+
+      applying = true;
+      for (final file in staged) {
+        await _rejectLinks(root, file.path);
+        await _replace(file.temporary, file.destination);
+      }
+      return OkfWriteResult(staged.map((file) => file.path));
+    } catch (error, stackTrace) {
+      final rollbackErrors = <Object>[
+        ...await _discardStaged(staged),
+        if (applying)
+          ...await _restore(root, captured)
+        else
+          ...await _removeAbsentDirectories(root, captured.absentDirectories),
+      ];
+      if (rollbackErrors.isNotEmpty) {
+        Error.throwWithStackTrace(
+          OkfWriteRollbackException(
+            writeError: error,
+            rollbackErrors: rollbackErrors,
+          ),
+          stackTrace,
+        );
+      }
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+  }
+
+  SplayTreeMap<String, String> _normalizeFiles(Map<String, String> files) {
+    final normalizedFiles = SplayTreeMap<String, String>();
     for (final entry in files.entries) {
       final relativePath = _validateRelativePath(entry.key);
-      if (validatedFiles.containsKey(relativePath)) {
+      if (normalizedFiles.containsKey(relativePath)) {
         throw ArgumentError.value(
           entry.key,
           'files',
           'Duplicate bundle path: $relativePath',
         );
       }
-      validatedFiles[relativePath] = entry.value;
+      normalizedFiles[relativePath] = entry.value;
     }
+    return normalizedFiles;
+  }
 
+  Future<OkfWriteResult> _writeAll(
+    Directory root,
+    SplayTreeMap<String, String> normalizedFiles, {
+    required bool checkOnly,
+  }) async {
     final changed = <String>[];
-    for (final entry in validatedFiles.entries) {
+    for (final entry in normalizedFiles.entries) {
       final destination = File(
         p.joinAll(<String>[root.path, ...p.posix.split(entry.key)]),
       );
@@ -95,6 +199,106 @@ final class OkfBundleWriter {
     }
 
     return OkfWriteResult(changed);
+  }
+
+  Future<_CapturedFiles> _capture(
+    Directory root,
+    Iterable<String> paths,
+  ) async {
+    final files = <String, List<int>?>{};
+    final absentDirectories = <String>{};
+
+    for (final path in paths) {
+      await _rejectLinks(root, path);
+      final destination = _destination(root, path);
+      files[path] =
+          await destination.exists() ? await destination.readAsBytes() : null;
+
+      var directory = p.posix.dirname(path);
+      while (directory != '.') {
+        final local = Directory(_destinationPath(root, directory));
+        final type = await FileSystemEntity.type(
+          local.path,
+          followLinks: false,
+        );
+        if (type == FileSystemEntityType.notFound) {
+          absentDirectories.add(directory);
+        }
+        directory = p.posix.dirname(directory);
+      }
+    }
+
+    return _CapturedFiles(
+      files: files,
+      absentDirectories: absentDirectories,
+    );
+  }
+
+  Future<List<Object>> _restore(
+    Directory root,
+    _CapturedFiles captured,
+  ) async {
+    final errors = <Object>[];
+
+    for (final entry in captured.files.entries.toList().reversed) {
+      try {
+        await _rejectLinks(root, entry.key);
+        final destination = _destination(root, entry.key);
+        final original = entry.value;
+        if (original == null) {
+          if (await destination.exists()) {
+            await destination.delete();
+          }
+        } else {
+          await destination.parent.create(recursive: true);
+          await _rejectLinks(root, entry.key);
+          await _atomicWrite(destination, original);
+        }
+      } catch (error) {
+        errors.add(error);
+      }
+    }
+
+    errors.addAll(
+      await _removeAbsentDirectories(root, captured.absentDirectories),
+    );
+
+    return errors;
+  }
+
+  Future<List<Object>> _removeAbsentDirectories(
+    Directory root,
+    Set<String> absentDirectories,
+  ) async {
+    final errors = <Object>[];
+    final directories = absentDirectories.toList()
+      ..sort((left, right) => _pathDepth(right).compareTo(_pathDepth(left)));
+    for (final path in directories) {
+      try {
+        final directory = Directory(_destinationPath(root, path));
+        if (await directory.exists() && await directory.list().isEmpty) {
+          await directory.delete();
+        }
+      } catch (error) {
+        errors.add(error);
+      }
+    }
+
+    return errors;
+  }
+
+  Future<List<Object>> _discardStaged(List<_StagedFile> staged) async {
+    final errors = <Object>[];
+    for (final file in staged) {
+      try {
+        if (await file.temporary.exists()) {
+          await file.temporary.delete();
+        }
+      } catch (error) {
+        errors.add(error);
+      }
+    }
+    return errors;
   }
 
   Future<Directory> _validatedRoot(
@@ -147,6 +351,17 @@ final class OkfBundleWriter {
   }
 
   Future<void> _atomicWrite(File destination, List<int> bytes) async {
+    final temporary = await _stageWrite(destination, bytes);
+    try {
+      await _replace(temporary, destination);
+    } finally {
+      if (await temporary.exists()) {
+        await temporary.delete();
+      }
+    }
+  }
+
+  Future<File> _stageWrite(File destination, List<int> bytes) async {
     final random = Random.secure();
     File? temporary;
     for (var attempt = 0; attempt < 16; attempt++) {
@@ -178,11 +393,12 @@ final class OkfBundleWriter {
       sink.add(bytes);
       await sink.flush();
       await sink.close();
-      await _replace(temporary, destination);
-    } finally {
+      return temporary;
+    } catch (_) {
       if (await temporary.exists()) {
         await temporary.delete();
       }
+      rethrow;
     }
   }
 
@@ -222,6 +438,59 @@ final class OkfBundleWriter {
     }
   }
 }
+
+Future<void> _createRootParent(String rootPath) async {
+  if (rootPath.trim().isEmpty) {
+    throw const FileSystemException('Bundle root must not be empty');
+  }
+  final root = Directory(p.normalize(p.absolute(rootPath)));
+  await root.parent.create(recursive: true);
+}
+
+/// Package-internal transaction boundary used by the prepared write path.
+///
+/// Kept out of the public IO library so rollback-backed multi-file writes
+/// cannot bypass prospective validation. Every payload is staged before the
+/// first destination is replaced.
+final class OkfBundleWriteTransaction {
+  const OkfBundleWriteTransaction();
+
+  Future<OkfWriteResult> writeAll(
+    String rootPath,
+    Map<String, String> files,
+  ) =>
+      const OkfBundleWriter()._writeAllTransactionally(rootPath, files);
+}
+
+final class _CapturedFiles {
+  const _CapturedFiles({
+    required this.files,
+    required this.absentDirectories,
+  });
+
+  final Map<String, List<int>?> files;
+  final Set<String> absentDirectories;
+}
+
+final class _StagedFile {
+  const _StagedFile({
+    required this.path,
+    required this.destination,
+    required this.temporary,
+  });
+
+  final String path;
+  final File destination;
+  final File temporary;
+}
+
+File _destination(Directory root, String relativePath) =>
+    File(_destinationPath(root, relativePath));
+
+String _destinationPath(Directory root, String relativePath) =>
+    p.joinAll(<String>[root.path, ...p.posix.split(relativePath)]);
+
+int _pathDepth(String path) => p.posix.split(path).length;
 
 String _validateRelativePath(String value) {
   if (p.windows.isAbsolute(value)) {

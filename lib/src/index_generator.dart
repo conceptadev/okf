@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 
 import 'bundle.dart';
 import 'index_log.dart';
+import 'link_path.dart';
 
 /// Supplies a deterministic description for a directory index.
 typedef OkfDirectoryDescriptionSynthesizer = String Function(
@@ -112,7 +113,7 @@ final class OkfIndexGenerator {
           type: _nonEmptyString(document.frontmatter['type']) ?? 'Other',
           title: _nonEmptyString(document.frontmatter['title']) ??
               entry.key.basename,
-          link: _encodeRelativeSegment('${entry.key.basename}.md'),
+          link: encodeOkfLinkSegment('${entry.key.basename}.md'),
           description:
               _nonEmptyString(document.frontmatter['description']) ?? '',
         ),
@@ -132,7 +133,7 @@ final class OkfIndexGenerator {
         OkfIndexEntry(
           type: 'Subdirectories',
           title: basename,
-          link: '${_encodeRelativeSegment(basename)}/index.md',
+          link: '${encodeOkfLinkSegment(basename)}/index.md',
           description: descriptions[child] ?? '',
         ),
       );
@@ -206,6 +207,3 @@ String? _nonEmptyString(Object? value) {
   }
   return value.trim();
 }
-
-String _encodeRelativeSegment(String value) =>
-    Uri.encodeComponent(value).replaceAll('%2E', '.');

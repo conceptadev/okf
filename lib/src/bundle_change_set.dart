@@ -126,3 +126,20 @@ final class OkfBundleChangeSet {
   /// The changes in application order.
   final List<OkfBundleChange> changes;
 }
+
+/// A change that cannot be described against the bundle it targets.
+///
+/// This is the tool-error tier of the write path: creating a concept that
+/// already exists, or touching one that does not, describes no bundle state
+/// at all, so there is no report to refuse with. A change that describes a
+/// state the Spec rejects is an [OkfPreparationRefused] instead.
+final class OkfBundleChangeException implements Exception {
+  /// Creates a change-description exception.
+  const OkfBundleChangeException(this.message);
+
+  /// A human-readable explanation.
+  final String message;
+
+  @override
+  String toString() => 'OkfBundleChangeException: $message';
+}

@@ -10,6 +10,7 @@ import '../document.dart';
 import '../finding.dart';
 import '../spec_rules/load_findings.dart';
 import '../validator.dart';
+import 'bundle_apply_lock.dart';
 
 /// The result of inspecting an OKF bundle directory.
 ///
@@ -75,12 +76,25 @@ final class OkfBundleLoadResult {
   ///
   /// This is the complete Report for the bundle — the projection every
   /// adapter surfaces — in the canonical Report order.
-  OkfSpecValidation validate() {
-    final validation = const OkfSpecValidator().validate(bundle);
+  OkfSpecValidation validate() => validateCandidate(bundle);
+
+  /// Validates a prospective complete [candidate] while retaining source load
+  /// failures except those repaired by [replacedPaths].
+  ///
+  /// This is the same Report-composition seam as [validate], used when a
+  /// caller has overlaid changes in memory without re-reading the filesystem.
+  OkfSpecValidation validateCandidate(
+    OkfBundle candidate, {
+    Iterable<String> replacedPaths = const <String>[],
+  }) {
+    final replacements = replacedPaths.toSet();
+    final validation = const OkfSpecValidator().validate(candidate);
     return OkfSpecValidation(
       OkfReport(
         findings: <OkfFinding>[
-          ...report.findings,
+          ...report.findings.where(
+            (finding) => !replacements.contains(finding.location?.path),
+          ),
           ...validation.report.findings,
         ],
       ),
@@ -124,7 +138,10 @@ final class OkfBundleLoader {
   }
 
   /// Inventories and parses the bundle rooted at [rootPath].
-  Future<OkfBundleLoadResult> inspect(String rootPath) async {
+  Future<OkfBundleLoadResult> inspect(String rootPath) =>
+      OkfBundleApplyLock.synchronized(rootPath, () => _inspect(rootPath));
+
+  Future<OkfBundleLoadResult> _inspect(String rootPath) async {
     final root = await _validatedRoot(rootPath);
     final entities = <_BundleEntry>[];
 

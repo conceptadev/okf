@@ -1,4 +1,4 @@
-import 'package:okf/okf.dart';
+import 'package:okf/okf_io.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -236,5 +236,29 @@ tags: [a, b]
         throwsArgumentError,
       );
     }
+  });
+
+  test('preparation refusal carries the closed Spec judgment', () {
+    final validation = OkfSpecValidation(
+      OkfReport(
+        findings: <OkfFinding>[
+          OkfFinding(
+            id: OkfFindingId.okf('invalid-change'),
+            severity: OkfFindingSeverity.error,
+            message: 'The change is invalid.',
+          ),
+        ],
+      ),
+    );
+    final OkfBundlePreparation result = OkfPreparationRefused(
+      validation: validation,
+    );
+
+    expect(result, isA<OkfPreparationRefused>());
+    expect(
+      (result as OkfPreparationRefused).validation,
+      same(validation),
+    );
+    expect(validation.isConformant, isFalse);
   });
 }

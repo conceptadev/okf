@@ -1,0 +1,354 @@
+import 'dart:collection';
+
+import 'package:path/path.dart' as p;
+
+import 'bundle.dart';
+import 'bundle_change_set.dart';
+import 'concept_id.dart';
+import 'document.dart';
+import 'index_generator.dart';
+import 'index_log.dart';
+import 'iso_date.dart';
+import 'link_path.dart';
+
+/// The bundle state and file texts an [OkfBundleChangeSet] would produce.
+///
+/// The overlay is the single interpretation of a change description: what the
+/// bundle becomes, and which files carry that state. Prospective validation
+/// reads [bundle] and the atomic apply writes [files], so a validated change
+/// and a written change cannot diverge.
+final class OkfBundleChangeOverlay {
+  OkfBundleChangeOverlay._({required this.bundle, required this.files});
+
+  /// Overlays [changes] onto [base] as of [date].
+  ///
+  /// Throws [OkfBundleChangeException] when a change cannot be described
+  /// against [base] at all — a distinct outcome from a change that describes
+  /// a bundle state the rules reject.
+  factory OkfBundleChangeOverlay.of(
+    OkfBundle base,
+    OkfBundleChangeSet changes, {
+    required DateTime date,
+  }) {
+    if (changes.changes.isEmpty) {
+      return OkfBundleChangeOverlay._(
+        bundle: base,
+        files: const <String, String>{},
+      );
+    }
+
+    final documents = LinkedHashMap<OkfConceptId, OkfDocument>.of(
+      base.concepts,
+    );
+    final files = <String, String>{};
+    final logEntries = <OkfLogEntry>[];
+    final affectedIndexes = <String>{};
+    final day = formatIsoDate(date);
+
+    for (final change in changes.changes) {
+      final applied = _applyChange(documents, change, day);
+      if (applied == null) {
+        continue;
+      }
+      final path = applied.id.documentPath;
+      final serialized = applied.document.serialize();
+      documents[applied.id] = OkfDocument.parse(
+        serialized,
+        sourcePath: path,
+      );
+      files[path] = serialized;
+      logEntries.add(applied.entry);
+      if (applied.affectsIndex) {
+        affectedIndexes.addAll(_indexAncestors(applied.id));
+      }
+    }
+
+    final logs = Map<String, String>.of(base.logFiles);
+    final log = logEntries.isEmpty
+        ? null
+        : _rewrittenLog(base.logFiles[_rootLogPath], logEntries);
+    if (log != null) {
+      logs[_rootLogPath] = log;
+      files[_rootLogPath] = log;
+    }
+
+    final conceptFiles = <String, OkfDocument>{
+      for (final entry in documents.entries)
+        entry.key.documentPath: entry.value,
+    };
+    final indexes = const OkfIndexGenerator().generate(
+      OkfBundle.fromDocuments(
+        conceptFiles,
+        indexes: base.indexFiles,
+        logs: logs,
+        assets: base.assetPaths,
+      ),
+    );
+    final candidateIndexes = Map<String, String>.of(base.indexFiles);
+    for (final index in indexes.entries) {
+      if (!affectedIndexes.contains(index.key)) {
+        continue;
+      }
+      candidateIndexes[index.key] = index.value;
+      if (base.indexFiles[index.key] != index.value) {
+        files[index.key] = index.value;
+      }
+    }
+
+    return OkfBundleChangeOverlay._(
+      bundle: OkfBundle.fromDocuments(
+        conceptFiles,
+        indexes: candidateIndexes,
+        logs: logs,
+        assets: base.assetPaths,
+      ),
+      files: Map<String, String>.unmodifiable(files),
+    );
+  }
+
+  /// The bundle the change set describes.
+  final OkfBundle bundle;
+
+  /// Desired file texts keyed by bundle-relative path.
+  final Map<String, String> files;
+}
+
+/// Interprets one change against [documents], or returns `null` when the
+/// bundle already describes it.
+({
+  OkfConceptId id,
+  OkfDocument document,
+  OkfLogEntry entry,
+  bool affectsIndex,
+})? _applyChange(
+  Map<OkfConceptId, OkfDocument> documents,
+  OkfBundleChange change,
+  String day,
+) {
+  switch (change) {
+    case OkfCreateConceptChange(id: final id, document: final document):
+      _rejectReservedPath(id);
+      if (documents.containsKey(id)) {
+        throw OkfBundleChangeException('Concept ${id.value} already exists.');
+      }
+      return (
+        id: id,
+        document: document,
+        entry: _logEntry(day, 'Created', _conceptLink(id, document)),
+        affectsIndex: true,
+      );
+
+    case OkfUpdateConceptChange(id: final id):
+      final current = _requireDocument(documents, id);
+      final updated = _withFrontmatter(
+        current,
+        change.frontmatterChanges,
+        body: change.body,
+      );
+      if (updated.serialize() == current.serialize()) {
+        return null;
+      }
+      return (
+        id: id,
+        document: updated,
+        entry: _logEntry(day, 'Updated', _conceptLink(id, updated)),
+        affectsIndex: _indexProjection(current) != _indexProjection(updated),
+      );
+
+    case OkfLinkConceptsChange(
+        source: final source,
+        target: final target,
+        relationship: final relationship,
+      ):
+      final current = _requireDocument(documents, source);
+      final targetDocument = documents[target];
+      final label = relationship.trim();
+      if (label.isEmpty) {
+        throw const OkfBundleChangeException(
+          'A relationship label must not be empty.',
+        );
+      }
+
+      final declared = current.frontmatter['sources'] ?? const <Object?>[];
+      if (declared is! List<Object?>) {
+        throw OkfBundleChangeException(
+          'Concept ${source.value} declares sources that are not a list.',
+        );
+      }
+      final link = <String, Object?>{
+        'resource': _relativeResource(source, target),
+        'relationship': label,
+      };
+      if (declared.any((entry) => _sameLink(entry, link))) {
+        return null;
+      }
+
+      return (
+        id: source,
+        document: _withFrontmatter(current, <String, Object?>{
+          'sources': <Object?>[...declared, link],
+        }),
+        entry: _logEntry(
+          day,
+          'Linked',
+          '${_conceptLink(source, current)} $label '
+              '${_conceptLink(target, targetDocument)}',
+        ),
+        affectsIndex: false,
+      );
+
+    case OkfDeprecateConceptChange(id: final id, note: final note):
+      final current = _requireDocument(documents, id);
+      if (current.frontmatter['status'] == _deprecated) {
+        return null;
+      }
+      final link = _conceptLink(id, current);
+      final trimmedNote = note?.trim() ?? '';
+      return (
+        id: id,
+        document: _withFrontmatter(
+          current,
+          const <String, Object?>{'status': _deprecated},
+        ),
+        entry: _logEntry(
+          day,
+          'Deprecated',
+          trimmedNote.isEmpty ? link : '$link — $trimmedNote',
+        ),
+        affectsIndex: false,
+      );
+  }
+}
+
+({String type, String title, String description}) _indexProjection(
+  OkfDocument document,
+) =>
+    (
+      type: _indexValue(document.frontmatter['type'], fallback: 'Other'),
+      title: _indexValue(document.frontmatter['title']),
+      description:
+          _indexValue(document.frontmatter['description'], fallback: ''),
+    );
+
+String _indexValue(Object? value, {String? fallback}) =>
+    value is String && value.trim().isNotEmpty ? value.trim() : fallback ?? '';
+
+/// Overlays [changes] onto a document's frontmatter, dropping fields changed
+/// to `null` and retaining every field the change does not name.
+OkfDocument _withFrontmatter(
+  OkfDocument document,
+  Map<String, Object?> changes, {
+  String? body,
+}) {
+  final frontmatter = LinkedHashMap<String, Object?>.of(document.frontmatter);
+  for (final field in changes.entries) {
+    if (field.value == null) {
+      frontmatter.remove(field.key);
+    } else {
+      frontmatter[field.key] = field.value;
+    }
+  }
+  return document.copyWith(
+    frontmatter: frontmatter,
+    body: body,
+    hasFrontmatter: document.hasFrontmatter || frontmatter.isNotEmpty,
+  );
+}
+
+/// Emits the root log with [entries] prepended, or `null` when the existing
+/// log cannot be re-emitted without losing content.
+///
+/// An unparseable log stays untouched so a change set never silently drops
+/// authored history: the rules that read it report the same problem, and the
+/// resulting state is refused.
+String? _rewrittenLog(String? source, List<OkfLogEntry> entries) {
+  if (source == null) {
+    return OkfLogDocument(title: _defaultLogTitle, entries: entries)
+        .serialize();
+  }
+
+  final OkfDocument document;
+  try {
+    document = OkfDocument.parse(source, sourcePath: _rootLogPath);
+  } on OkfDocumentException {
+    return null;
+  }
+  if (document.hasFrontmatter) {
+    return null;
+  }
+
+  final log = OkfLogDocument.parseBody(document.body);
+  if (log.issues.isNotEmpty) {
+    return null;
+  }
+  return OkfLogDocument(
+    title: log.title,
+    entries: <OkfLogEntry>[...entries, ...log.entries],
+  ).serialize();
+}
+
+OkfDocument _requireDocument(
+  Map<OkfConceptId, OkfDocument> documents,
+  OkfConceptId id,
+) {
+  final document = documents[id];
+  if (document == null) {
+    throw OkfBundleChangeException('Concept ${id.value} does not exist.');
+  }
+  return document;
+}
+
+void _rejectReservedPath(OkfConceptId id) {
+  try {
+    OkfConceptId.fromDocumentPath(id.documentPath);
+  } on FormatException {
+    throw OkfBundleChangeException(
+      'Concept ${id.value} would occupy the reserved path '
+      '${id.documentPath}.',
+    );
+  }
+}
+
+bool _sameLink(Object? entry, Map<String, Object?> link) =>
+    entry is Map<Object?, Object?> &&
+    entry['resource'] == link['resource'] &&
+    entry['relationship'] == link['relationship'];
+
+OkfLogEntry _logEntry(String day, String action, String description) =>
+    OkfLogEntry(date: day, action: action, description: description);
+
+String _conceptLink(OkfConceptId id, OkfDocument? document) {
+  final String title;
+  if (document == null) {
+    title = id.value;
+  } else {
+    title = document.title ?? id.basename;
+  }
+  return '[$title](${encodeOkfLinkPath(id.documentPath)})';
+}
+
+Iterable<String> _indexAncestors(OkfConceptId id) sync* {
+  var directory = id.directory;
+  while (true) {
+    yield directory.isEmpty ? 'index.md' : '$directory/index.md';
+    if (directory.isEmpty) {
+      break;
+    }
+    final parent = p.posix.dirname(directory);
+    directory = parent == '.' ? '' : parent;
+  }
+}
+
+String _relativeResource(OkfConceptId source, OkfConceptId target) {
+  final directory = source.directory;
+  return encodeOkfLinkPath(
+    p.posix.relative(
+      target.documentPath,
+      from: directory.isEmpty ? '.' : directory,
+    ),
+  );
+}
+
+const String _rootLogPath = 'log.md';
+const String _defaultLogTitle = 'Log';
+const String _deprecated = 'deprecated';
