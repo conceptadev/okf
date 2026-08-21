@@ -1,8 +1,10 @@
 .dart_tool/
 .git/
 .github/
+action.yml
 build/
 coverage/
 doc/
 docs/
 tool/
+test/ci_gate_test.dart

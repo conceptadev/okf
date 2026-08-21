@@ -30,6 +30,10 @@
   kind can represent with `ArgumentError`.
 - Validate relationship names, and escape control characters in one-line
   finding text while retaining raw locations and messages in JSON.
+- Add the CI gate: releases attach `dart compile exe` binaries for Linux and
+  macOS, and a composite GitHub Action pins an engine version, downloads the
+  matching attested binary from an immutable release, and runs OKF Spec
+  validation as a single invocation whose exit code decides the job.
 
 ## 0.1.2
 
