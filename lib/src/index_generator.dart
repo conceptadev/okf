@@ -3,7 +3,6 @@ import 'dart:collection';
 import 'package:path/path.dart' as p;
 
 import 'bundle.dart';
-import 'document.dart';
 import 'index_log.dart';
 
 /// Supplies a deterministic description for a directory index.
@@ -46,15 +45,15 @@ final class OkfIndexGenerator {
         continue;
       }
 
-      final body = _buildIndexBody(entries);
-      final indexPath = directory.isEmpty ? 'index.md' : '$directory/index.md';
-      generated[indexPath] = directory.isEmpty
-          ? _rootIndex(
-              bundle,
-              body,
-              declareVersion: declareVersion,
-            )
-          : body;
+      final isRoot = directory.isEmpty;
+      final indexPath = isRoot ? 'index.md' : '$directory/index.md';
+      generated[indexPath] = OkfIndexDocument(
+        entries: entries,
+        okfVersion: isRoot
+            ? declareVersion ??
+                _existingRootVersion(bundle.indexFiles[indexPath])
+            : null,
+      ).serialize();
 
       if (directory.isNotEmpty) {
         descriptions[directory] = _describeDirectory(directory, entries);
@@ -153,35 +152,12 @@ final class OkfIndexGenerator {
     return entries;
   }
 
-  String _buildIndexBody(List<OkfIndexEntry> entries) {
-    final grouped = SplayTreeMap<String, List<OkfIndexEntry>>(
-      _compareText,
-    );
-    for (final entry in entries) {
-      grouped.putIfAbsent(entry.type, () => <OkfIndexEntry>[]).add(entry);
-    }
-
-    final sections = <String>[];
-    for (final group in grouped.entries) {
-      final lines = <String>['# ${_escapeHeading(group.key)}', ''];
-      for (final entry in group.value) {
-        final description = _singleLine(entry.description);
-        final suffix = description.isEmpty ? '' : ' - $description';
-        lines.add(
-          '* [${_escapeLinkLabel(entry.title)}](${entry.link})$suffix',
-        );
-      }
-      sections.add(lines.join('\n'));
-    }
-    return '${sections.join('\n\n')}\n';
-  }
-
   String _describeDirectory(
     String directory,
     List<OkfIndexEntry> entries,
   ) {
     if (entries.length == 1 && entries.single.description.trim().isNotEmpty) {
-      return _singleLine(entries.single.description);
+      return entries.single.description;
     }
     String? custom;
     try {
@@ -195,27 +171,11 @@ final class OkfIndexGenerator {
       custom = null;
     }
     if (custom != null && custom.trim().isNotEmpty) {
-      return _singleLine(custom);
+      return custom;
     }
 
     final titles = entries.map((entry) => entry.title).join(', ');
     return 'Contains ${entries.length} entries: $titles.';
-  }
-
-  String _rootIndex(
-    OkfBundle bundle,
-    String body, {
-    required String? declareVersion,
-  }) {
-    final version =
-        declareVersion ?? _existingRootVersion(bundle.indexFiles['index.md']);
-    if (version == null || version.trim().isEmpty) {
-      return body;
-    }
-    return OkfDocument(
-      frontmatter: <String, Object?>{'okf_version': version},
-      body: body,
-    ).serialize();
   }
 }
 
@@ -224,11 +184,9 @@ String? _existingRootVersion(String? source) {
     return null;
   }
   try {
-    final document = OkfDocument.parse(source, sourcePath: 'index.md');
-    if (!document.hasFrontmatter) {
-      return null;
-    }
-    return _nonEmptyString(document.frontmatter['okf_version']);
+    return _nonEmptyString(
+      OkfIndexDocument.parse(source, sourcePath: 'index.md').okfVersion,
+    );
   } on FormatException {
     return null;
   }
@@ -248,16 +206,6 @@ String? _nonEmptyString(Object? value) {
   }
   return value.trim();
 }
-
-String _singleLine(String value) =>
-    value.trim().replaceAll(RegExp(r'\s+'), ' ');
-
-String _escapeHeading(String value) =>
-    _singleLine(value).replaceAll('#', r'\#');
-
-String _escapeLinkLabel(String value) => _singleLine(
-      value,
-    ).replaceAll(r'\', r'\\').replaceAll('[', r'\[').replaceAll(']', r'\]');
 
 String _encodeRelativeSegment(String value) =>
     Uri.encodeComponent(value).replaceAll('%2E', '.');

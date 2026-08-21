@@ -18,6 +18,7 @@ implementation and is not affiliated with or endorsed by Google.
 - Load bundles safely without following symbolic links.
 - Resolve relative and bundle-relative links while retaining broken links.
 - Generate deterministic directory indexes.
+- Parse and emit `index.md` and `log.md` entries through one shared model.
 - Export bundle graphs as JSON, DOT, or Mermaid.
 - Use the APIs without `dart:io`, or import `okf_io.dart` for filesystem
   operations.

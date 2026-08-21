@@ -1,4 +1,5 @@
 import '../finding.dart';
+import '../index_log.dart';
 import 'context.dart';
 import 'rule.dart';
 
@@ -48,58 +49,42 @@ final List<OkfSpecRule> reservedRules = List<OkfSpecRule>.unmodifiable(
       'empty-index-section',
       'Every index section must contain at least one entry.',
       OkfFindingSeverity.error,
-      (source) {
-        var sawSection = false;
-        var sectionHasEntry = false;
-        final messages = <String>[];
-        for (final line in source.bodyLines) {
-          if (_heading.hasMatch(line)) {
-            if (sawSection && !sectionHasEntry) {
-              messages.add(_emptyIndexSection);
-            }
-            sawSection = true;
-            sectionHasEntry = false;
-          } else if (_indexEntry.hasMatch(line)) {
-            sectionHasEntry = true;
-          }
-        }
-        if (sawSection && !sectionHasEntry) {
-          messages.add(_emptyIndexSection);
-        }
-        return messages;
-      },
+      (source) => _issueMessages(
+        source.content.issues,
+        OkfIndexIssue.emptySection,
+        'Every index section must contain at least one entry.',
+      ),
     ),
     _indexRule(
       'index-entry-before-section',
       'Index entries must follow a level-one section heading.',
       OkfFindingSeverity.error,
-      (source) => <String>[
-        for (final line in source.bodyLines.takeWhile(
-          (line) => !_heading.hasMatch(line),
-        ))
-          if (_indexEntry.hasMatch(line))
-            'Index entries must follow a level-one section heading.',
-      ],
+      (source) => _issueMessages(
+        source.content.issues,
+        OkfIndexIssue.entryBeforeSection,
+        'Index entries must follow a level-one section heading.',
+      ),
     ),
     _indexRule(
       'invalid-index-structure',
       'Index bodies may contain only headings and linked list entries.',
       OkfFindingSeverity.error,
-      (source) => <String>[
-        for (final line in source.bodyLines)
-          if (!_heading.hasMatch(line) && !_indexEntry.hasMatch(line))
-            'Index bodies may contain only level-one headings and linked '
-                'list entries.',
-      ],
+      (source) => _issueMessages(
+        source.content.issues,
+        OkfIndexIssue.unrecognizedLine,
+        'Index bodies may contain only level-one headings and linked '
+        'list entries.',
+      ),
     ),
     _indexRule(
       'missing-index-section',
       'Indexes must contain at least one level-one section.',
       OkfFindingSeverity.error,
-      (source) => <String>[
-        if (!source.bodyLines.any(_heading.hasMatch))
-          'An index must contain at least one level-one section.',
-      ],
+      (source) => _issueMessages(
+        source.content.issues,
+        OkfIndexIssue.missingSection,
+        'An index must contain at least one level-one section.',
+      ),
     ),
     _logRule(
       'invalid-log-frontmatter',
@@ -114,115 +99,85 @@ final List<OkfSpecRule> reservedRules = List<OkfSpecRule>.unmodifiable(
       'missing-log-title',
       'Logs must begin with one level-one title.',
       OkfFindingSeverity.error,
-      (source) {
-        final lines = source.bodyLines;
-        return <String>[
-          if (lines.isEmpty || !_heading.hasMatch(lines.first))
-            'A log must begin with one level-one title.',
-        ];
-      },
+      (source) => _issueMessages(
+        source.content.issues,
+        OkfLogIssue.missingTitle,
+        'A log must begin with one level-one title.',
+      ),
     ),
     _logRule(
       'empty-log-date',
       'Every log date must contain at least one entry.',
       OkfFindingSeverity.error,
-      (source) {
-        var sawDate = false;
-        var entriesForDate = 0;
-        final messages = <String>[];
-        for (final line in source.logBody) {
-          if (_logDate.hasMatch(line)) {
-            if (sawDate && entriesForDate == 0) {
-              messages.add(_emptyLogDate);
-            }
-            sawDate = true;
-            entriesForDate = 0;
-          } else if (_logEntry.hasMatch(line)) {
-            entriesForDate++;
-          }
-        }
-        if (sawDate && entriesForDate == 0) {
-          messages.add(_emptyLogDate);
-        }
-        return messages;
-      },
+      (source) => _issueMessages(
+        source.content.issues,
+        OkfLogIssue.emptyDate,
+        'Every log date must contain at least one entry.',
+      ),
     ),
     _logRule(
       'invalid-log-date',
       'Log date headings must contain valid ISO 8601 dates.',
       OkfFindingSeverity.error,
-      (source) => <String>[
-        for (final line in source.logBody)
-          if (_logDate.hasMatch(line) && _dateOf(line) == null)
-            'Log date headings must be valid ISO 8601 dates.',
-      ],
+      (source) => _issueMessages(
+        source.content.issues,
+        OkfLogIssue.invalidDate,
+        'Log date headings must be valid ISO 8601 dates.',
+      ),
     ),
     _logRule(
       'log-not-newest-first',
       'Log date groups must be ordered newest first.',
       OkfFindingSeverity.error,
-      (source) {
-        DateTime? previousDate;
-        final messages = <String>[];
-        for (final line in source.logBody) {
-          final date = _dateOf(line);
-          if (date == null) {
-            continue;
-          }
-          if (previousDate != null && date.isAfter(previousDate)) {
-            messages.add('Log date groups must be ordered newest first.');
-          }
-          previousDate = date;
-        }
-        return messages;
-      },
+      (source) => _issueMessages(
+        source.content.issues,
+        OkfLogIssue.notNewestFirst,
+        'Log date groups must be ordered newest first.',
+      ),
     ),
     _logRule(
       'log-entry-before-date',
       'Log entries must follow an ISO 8601 date heading.',
       OkfFindingSeverity.error,
-      (source) => <String>[
-        for (final line in source.logBody.takeWhile(
-          (line) => !_logDate.hasMatch(line),
-        ))
-          if (_logEntry.hasMatch(line))
-            'Log entries must follow an ISO 8601 date heading.',
-      ],
+      (source) => _issueMessages(
+        source.content.issues,
+        OkfLogIssue.entryBeforeDate,
+        'Log entries must follow an ISO 8601 date heading.',
+      ),
     ),
     _logRule(
       'invalid-log-structure',
       'Log bodies may contain only titles, dates, and list entries.',
       OkfFindingSeverity.error,
-      (source) => <String>[
-        for (final line in source.logBody)
-          if (!_logDate.hasMatch(line) && !_logEntry.hasMatch(line))
-            'Log bodies may contain only a title, date headings, and list '
-                'entries.',
-      ],
+      (source) => _issueMessages(
+        source.content.issues,
+        OkfLogIssue.unrecognizedLine,
+        'Log bodies may contain only a title, date headings, and list entries.',
+      ),
     ),
     _logRule(
       'missing-log-date',
       'Logs must contain at least one ISO 8601 date heading.',
       OkfFindingSeverity.error,
-      (source) => <String>[
-        if (!source.logBody.any(_logDate.hasMatch))
-          'A log must contain at least one ISO 8601 date heading.',
-      ],
+      (source) => _issueMessages(
+        source.content.issues,
+        OkfLogIssue.missingDate,
+        'A log must contain at least one ISO 8601 date heading.',
+      ),
     ),
   ],
 );
 
 /// The messages one rule reports for a single parsed reserved document.
-typedef _ReservedCheck = Iterable<String> Function(
-  ParsedReservedDocument source,
-);
+typedef _ReservedCheck<T extends ParsedReservedDocument> = Iterable<String>
+    Function(T source);
 
 /// A Spec rule that checks every parseable `index.md` independently.
 OkfSpecRule _indexRule(
   String code,
   String prose,
   OkfFindingSeverity severity,
-  _ReservedCheck check,
+  _ReservedCheck<ParsedIndexDocument> check,
 ) =>
     specRule(
       code: code,
@@ -237,7 +192,7 @@ OkfSpecRule _logRule(
   String code,
   String prose,
   OkfFindingSeverity severity,
-  _ReservedCheck check,
+  _ReservedCheck<ParsedLogDocument> check,
 ) =>
     specRule(
       code: code,
@@ -249,10 +204,10 @@ OkfSpecRule _logRule(
 
 /// Runs [check] over every document in [files] that parses; unparseable
 /// documents are reported by `okf/invalid-reserved-document` alone.
-Iterable<OkfFinding> _checkEach(
+Iterable<OkfFinding> _checkEach<T extends ParsedReservedDocument>(
   OkfSpecFindingDefinition definition,
-  List<ParsedReservedDocument> documents,
-  _ReservedCheck check,
+  List<T> documents,
+  _ReservedCheck<T> check,
 ) =>
     <OkfFinding>[
       for (final document in documents)
@@ -264,24 +219,18 @@ Iterable<OkfFinding> _checkEach(
     ];
 
 const String _rootIndexPath = 'index.md';
-const String _emptyIndexSection =
-    'Every index section must contain at least one entry.';
-const String _emptyLogDate = 'Every log date must contain at least one entry.';
 
 /// Whether the document is the bundle-root index carrying exactly one
 /// non-empty `okf_version` in its frontmatter.
-bool _isRootVersionFrontmatter(ParsedReservedDocument source) =>
+bool _isRootVersionFrontmatter(ParsedIndexDocument source) =>
     source.path == _rootIndexPath &&
     source.document.hasFrontmatter &&
     source.document.frontmatter.length == 1 &&
     isNonEmptyString(source.document.frontmatter['okf_version']);
 
-DateTime? _dateOf(String line) =>
-    parseIsoDate(_logDate.firstMatch(line)?.group(1));
-
-final RegExp _heading = RegExp(r'^# [^#].*$');
-final RegExp _indexEntry = RegExp(
-  r'^[*-] \[(?:\\.|[^\]])+\]\([^)]+\)(?:\s+-\s+.+)?$',
-);
-final RegExp _logDate = RegExp(r'^## (\d{4}-\d{2}-\d{2})$');
-final RegExp _logEntry = RegExp(r'^[*-] .+$');
+Iterable<String> _issueMessages<T extends Enum>(
+  List<T> issues,
+  T expected,
+  String message,
+) =>
+    issues.where((issue) => issue == expected).map((_) => message);

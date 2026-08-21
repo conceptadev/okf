@@ -59,7 +59,7 @@ void main() {
       indexes: <String, String>{
         'index.md': '''
 ---
-okf_version: "0.2"
+okf_version: " 0.2 "
 ---
 # Old
 * [A](a.md)
