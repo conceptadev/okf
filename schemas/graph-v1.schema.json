@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/conceptadev/okf/main/schemas/graph-v1.schema.json",
+  "title": "OKF graph JSON version 1",
+  "type": "object",
+  "required": ["schema_version", "nodes", "edges"],
+  "properties": {
+    "schema_version": {
+      "const": "1"
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "node": {
+      "type": "object",
+      "required": ["id", "path", "type", "title", "status", "trust_tier"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "trust_tier": {
+          "type": "string"
+        },
+        "stale_after": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "edge": {
+      "type": "object",
+      "required": ["source", "raw_target", "origin", "resolution"],
+      "properties": {
+        "source": {
+          "type": "string"
+        },
+        "raw_target": {
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "body",
+            "resource",
+            "sources.resource",
+            "computation",
+            "executor.resource",
+            "attester.resource"
+          ]
+        },
+        "resolution": {
+          "enum": [
+            "resolved-concept",
+            "resolved-asset",
+            "external",
+            "descriptor",
+            "unresolved",
+            "invalid"
+          ]
+        },
+        "resolved_path": {
+          "type": "string"
+        },
+        "target_concept": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

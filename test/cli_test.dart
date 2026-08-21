@@ -258,6 +258,81 @@ void main() {
     expect(mermaid.stdout, anyOf(contains('flowchart'), contains('graph')));
   });
 
+  test('composes graph filters for every output format', () async {
+    await _writeConcept(
+      bundle,
+      'analytics/primary.md',
+      type: 'Metric',
+      body: '[peer](peer.md) [missing](missing.md)',
+    );
+    await _writeConcept(
+      bundle,
+      'analytics/peer.md',
+      type: 'Metric',
+    );
+    await _writeConcept(bundle, 'analytics/reference.md');
+    await _writeConcept(bundle, 'other/metric.md', type: 'Metric');
+    const filters = <String>[
+      '--type=Metric',
+      '--type=Unknown',
+      '--path-prefix=unused/',
+      '--path-prefix=analytics/',
+      '--resolution=unresolved',
+    ];
+
+    final json = await _run(
+      <String>['graph', 'bundle', '--output=json', ...filters],
+      sandbox.path,
+    );
+    expect(json.exitCode, 0, reason: json.stderr);
+    final payload = jsonDecode(json.stdout) as Map<String, Object?>;
+    final nodes =
+        (payload['nodes']! as List<Object?>).cast<Map<String, Object?>>();
+    final edges =
+        (payload['edges']! as List<Object?>).cast<Map<String, Object?>>();
+    expect(
+      nodes.map((node) => node['id']),
+      <String>['analytics/peer', 'analytics/primary'],
+    );
+    expect(edges.single['raw_target'], 'missing.md');
+
+    for (final format in <String>['dot', 'mermaid']) {
+      final rendered = await _run(
+        <String>['graph', 'bundle', '--output=$format', ...filters],
+        sandbox.path,
+      );
+      expect(rendered.exitCode, 0, reason: rendered.stderr);
+      expect(rendered.stdout, contains('analytics/primary'));
+      expect(rendered.stdout, contains('missing.md'));
+      expect(rendered.stdout, isNot(contains('analytics/reference')));
+      expect(rendered.stdout, isNot(contains('other/metric')));
+    }
+  });
+
+  test('preserves commas in free-form graph filters', () async {
+    await _writeConcept(
+      bundle,
+      'sales,ops/primary.md',
+      type: 'Metric, Derived',
+    );
+
+    final result = await _run(
+      <String>[
+        'graph',
+        'bundle',
+        '--type=Metric, Derived',
+        '--path-prefix=sales,ops/',
+      ],
+      sandbox.path,
+    );
+    final payload = jsonDecode(result.stdout) as Map<String, Object?>;
+    final nodes =
+        (payload['nodes']! as List<Object?>).cast<Map<String, Object?>>();
+
+    expect(result.exitCode, 0, reason: result.stderr);
+    expect(nodes.map((node) => node['id']), <String>['sales,ops/primary']);
+  });
+
   test('surfaces malformed indexes that will not be regenerated', () async {
     await _writeConcept(bundle, 'alpha.md');
     final orphan = await Directory(
@@ -299,6 +374,8 @@ Future<void> _writeConcept(
   Directory root,
   String relativePath, {
   bool includeType = true,
+  String type = 'Reference',
+  String body = '# Alpha',
 }) async {
   final file = File(
     p.joinAll(<String>[root.path, ...p.posix.split(relativePath)]),
@@ -307,11 +384,11 @@ Future<void> _writeConcept(
   await file.writeAsString(
     [
       '---',
-      if (includeType) 'type: Reference',
+      if (includeType) 'type: $type',
       'title: Alpha',
       '---',
       '',
-      '# Alpha',
+      body,
       '',
     ].join('\n'),
   );

@@ -273,7 +273,16 @@ final class OkfCli {
       return OkfVerdict.of(loaded.report).exitCode;
     }
 
-    final graph = OkfGraph.fromBundle(loaded.bundle);
+    final resolutions =
+        command.multiOption('resolution').map(OkfGraphResolution.fromWireValue);
+    final graph = OkfGraph.fromBundle(
+      loaded.bundle,
+      query: OkfGraphQuery(
+        conceptTypes: command.multiOption('type'),
+        pathPrefixes: command.multiOption('path-prefix'),
+        resolutions: resolutions,
+      ),
+    );
     final output = switch (command.option('output')) {
       'json' => const JsonEncoder.withIndent('  ').convert(graph.toJson()),
       'dot' => graph.toDot(),
@@ -440,6 +449,26 @@ ArgParser _buildParser() {
         allowed: const <String>['json', 'dot', 'mermaid'],
         defaultsTo: 'json',
         help: 'Graph output format.',
+      )
+      ..addMultiOption(
+        'type',
+        valueHelp: 'TYPE',
+        splitCommas: false,
+        help: 'Include concepts with these types.',
+      )
+      ..addMultiOption(
+        'path-prefix',
+        valueHelp: 'PREFIX',
+        splitCommas: false,
+        help: 'Include concepts under these bundle path prefixes.',
+      )
+      ..addMultiOption(
+        'resolution',
+        valueHelp: 'STATE',
+        allowed: OkfGraphResolution.values.map(
+          (resolution) => resolution.wireValue,
+        ),
+        help: 'Include edges with these resolution states.',
       ),
   );
   return parser;
