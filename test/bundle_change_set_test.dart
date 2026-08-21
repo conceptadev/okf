@@ -222,6 +222,28 @@ type: Reference
     expect(await _read(root, 'log.md'), contains('planned/future'));
   });
 
+  test('a link target cannot name a reserved document', () async {
+    final before = await _snapshot(root);
+
+    for (final target in <String>['metrics/index', 'log']) {
+      await expectLater(
+        changes.prepare(
+          root.path,
+          OkfBundleChangeSet(<OkfBundleChange>[
+            OkfLinkConceptsChange(
+              source: OkfConceptId('metrics/revenue'),
+              target: OkfConceptId(target),
+              relationship: 'depends-on',
+            ),
+          ]),
+        ),
+        throwsA(isA<OkfBundleChangeException>()),
+      );
+    }
+
+    expect(await _snapshot(root), before);
+  });
+
   test('inspection cannot mutate the candidate or committed bytes', () async {
     final preparation = await changes.prepare(root.path, _createChurn());
     final prepared = (preparation as OkfPreparationReady).prepared;

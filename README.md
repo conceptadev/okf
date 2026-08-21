@@ -119,6 +119,8 @@ that edits files between calls never sees a stale answer.
 | `validate` | `strict` | The Report `okf validate --output json` emits, plus the Verdict's `exit_code`. |
 | `create-concept` | `id`, `type`, `title`, `description`, `tags`, `body` | The bundle-relative paths the write committed. |
 | `update-concept` | `id`, `type`, `title`, `description`, `tags`, `body` | The bundle-relative paths the write committed. |
+| `link-concepts` | `source`, `target`, `relationship` | The bundle-relative paths the write committed. |
+| `deprecate-concept` | `id`, `note` | The bundle-relative paths the write committed. |
 
 `validate` returns the same Report as the command line for the same bundle
 and inputs — the same finding IDs, locations, and severities — and `strict`
@@ -128,28 +130,38 @@ against each tool's schema; rejected arguments come back as a tool error.
 
 ### Writes
 
-`create-concept` and `update-concept` write through `OkfBundleChangeApplier`,
-so one call prepares the concept document and its `index.md` and `log.md`
-entries, commits them under the shared bundle lock, and rolls them back
-together if an ordinary filesystem write fails. `id` is the bundle-relative
-concept ID without the `.md` suffix; `type` is required when creating.
+Every write verb goes through `OkfBundleChangeApplier`, so one call prepares
+the changed concept documents and log or index entries, commits them under the
+shared bundle lock, and rolls them back together if an ordinary filesystem
+write fails. `id`, `source`, and `target` are bundle-relative concept IDs
+without the `.md` suffix; `type` is required when creating.
 
-`type`, `title`, `description`, `tags`, and `body` are the fields the verbs
-manage. An update overlays only the arguments it is given and retains every
-other field — `resource`, `verification`, `sources`, and anything else the
-document carries keep their values and their order.
+`type`, `title`, `description`, `tags`, and `body` are the fields
+`create-concept` and `update-concept` manage. An update overlays only the
+arguments it is given and retains every other field — `resource`,
+`verification`, `sources`, and anything else the document carries keep their
+values and their order.
+
+`link-concepts` records `relationship` on the `source` concept as a reference
+to `target`, which `okf graph` exposes as a concept edge. The target may be
+planned rather than present: that write succeeds and the graph retains an
+unresolved edge. `deprecate-concept` sets the concept's lifecycle status to
+`deprecated` and records `note` with the log entry. Both are idempotent: a
+link the source already declares, or a concept that is already deprecated,
+changes no file.
 
 A write is judged before it reaches disk, against the same rules
 `okf validate` runs. Two outcomes are distinguished:
 
-- A change the rules reject is **refused**: the call fails with structured
+- A Spec-invalid candidate is **refused**: the call fails with structured
   content carrying the Report — the same finding IDs the command line prints
   for that state — and not one file is changed. Only Spec errors refuse a
   write; an advisory-only candidate remains conformant and can commit.
 - Input that describes no bundle state is a plain **tool error**, with a
   message and no Report: a malformed argument, an ID that is not
   bundle-relative or that would occupy a reserved `index.md` or `log.md` path,
-  creating a concept that already exists, or updating one that does not.
+  creating a concept that already exists, or naming a missing source concept
+  to update, link, or deprecate.
 
 Register the server with an MCP client by pointing it at the executable:
 
