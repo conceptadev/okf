@@ -5,13 +5,13 @@ import 'dart:io';
 import 'package:args/args.dart';
 import 'package:path/path.dart' as p;
 
-import 'base_rules/load_rules.dart';
 import 'control_characters.dart';
 import 'finding.dart';
 import 'graph.dart';
 import 'index_generator.dart';
 import 'io/bundle_loader.dart';
 import 'io/bundle_writer.dart';
+import 'spec_rules/load_findings.dart';
 import 'validator.dart';
 
 /// The package version reported by `okf --version`.

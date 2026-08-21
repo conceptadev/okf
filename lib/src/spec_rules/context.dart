@@ -1,6 +1,7 @@
 import '../bundle.dart';
 import '../document.dart';
 
+/// Parsed views shared by fixed OKF Spec rules during one validation pass.
 final class SpecValidationContext {
   factory SpecValidationContext(OkfBundle bundle) {
     final invalidDocuments = <InvalidReservedDocument>[];

@@ -2,36 +2,39 @@ import 'dart:convert';
 
 import '../document.dart';
 import '../finding.dart';
-import 'base_rule.dart';
+import 'rule.dart';
 
-/// A parsed [OkfBundle] cannot contain the failures these rules describe —
+/// A parsed [OkfBundle] cannot contain the failures these definitions describe
+/// —
 /// unreadable UTF-8, malformed documents, or invalid paths never survive into
 /// a bundle. Loading code therefore mints them directly instead of pretending
 /// they are executable bundle rules.
 final List<OkfSpecFindingDefinition> loadFindingDefinitions =
-    <OkfSpecFindingDefinition>[
-  invalidDocumentFinding,
-  invalidPathFinding,
-  invalidUtf8Finding,
-];
+    List<OkfSpecFindingDefinition>.unmodifiable(
+  <OkfSpecFindingDefinition>[
+    invalidDocumentFinding,
+    invalidPathFinding,
+    invalidUtf8Finding,
+  ],
+);
 
 /// `okf/invalid-document`: a Markdown document whose frontmatter or body
 /// could not be parsed.
-final OkfSpecFindingDefinition invalidDocumentFinding = baseFindingDefinition(
+final OkfSpecFindingDefinition invalidDocumentFinding = specFindingDefinition(
   code: 'invalid-document',
   prose: 'Markdown documents must parse, with well-formed YAML frontmatter.',
   severity: OkfFindingSeverity.error,
 );
 
 /// `okf/invalid-path`: a bundle entry whose relative path is not portable.
-final OkfSpecFindingDefinition invalidPathFinding = baseFindingDefinition(
+final OkfSpecFindingDefinition invalidPathFinding = specFindingDefinition(
   code: 'invalid-path',
   prose: 'Bundle entries must use valid relative POSIX paths.',
   severity: OkfFindingSeverity.error,
 );
 
 /// `okf/invalid-utf8`: a Markdown file that is not valid UTF-8.
-final OkfSpecFindingDefinition invalidUtf8Finding = baseFindingDefinition(
+final OkfSpecFindingDefinition invalidUtf8Finding = specFindingDefinition(
   code: 'invalid-utf8',
   prose: 'Markdown documents must contain valid UTF-8.',
   severity: OkfFindingSeverity.error,

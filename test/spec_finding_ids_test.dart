@@ -2,7 +2,7 @@ import 'package:okf/okf.dart';
 import 'package:test/test.dart';
 
 void main() {
-  test('read-only descriptors pin every stable OKF finding ID', () {
+  test('read-only descriptors pin every stable OKF Spec finding ID', () {
     expect(
       okfSpecRuleDescriptors.map((descriptor) => descriptor.id.value),
       orderedEquals(<String>[

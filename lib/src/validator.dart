@@ -1,22 +1,24 @@
-import 'base_rules/base_rule.dart';
-import 'base_rules/concept_rules.dart';
-import 'base_rules/load_rules.dart';
-import 'base_rules/reserved_rules.dart';
-import 'base_rules/validation_context.dart';
 import 'bundle.dart';
 import 'finding.dart';
 import 'spec_rule.dart';
+import 'spec_rules/concept_rules.dart';
+import 'spec_rules/context.dart';
+import 'spec_rules/load_findings.dart';
+import 'spec_rules/reserved_rules.dart';
+import 'spec_rules/rule.dart';
 
-final _bundleRules = <OkfSpecRule>[
-  ...conceptRuleEntries,
-  ...reservedRuleEntries,
-];
+final List<OkfSpecRule> _validationRules = List<OkfSpecRule>.unmodifiable(
+  <OkfSpecRule>[
+    ...conceptRules,
+    ...reservedRules,
+  ],
+);
 
 /// Read-only metadata for the complete fixed OKF Spec finding set.
 final List<OkfSpecRuleDescriptor> okfSpecRuleDescriptors =
     List<OkfSpecRuleDescriptor>.unmodifiable(<OkfSpecRuleDescriptor>[
   ...loadFindingDefinitions.map((definition) => definition.descriptor),
-  ..._bundleRules.map((rule) => rule.descriptor),
+  ..._validationRules.map((rule) => rule.descriptor),
 ]);
 
 /// Checks the pinned OKF v0.2 requirements with a fixed internal rule set.
@@ -30,7 +32,7 @@ final class OkfSpecValidator {
     return OkfSpecValidation(
       OkfReport(
         findings: <OkfFinding>[
-          for (final rule in _bundleRules) ...rule.run(context),
+          for (final rule in _validationRules) ...rule.run(context),
         ],
       ),
     );

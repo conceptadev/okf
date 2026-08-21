@@ -1,7 +1,7 @@
 import '../document.dart';
 import '../finding.dart';
 import '../spec_rule.dart';
-import 'validation_context.dart';
+import 'context.dart';
 
 final class OkfSpecFindingDefinition {
   const OkfSpecFindingDefinition(this.descriptor);
@@ -29,12 +29,12 @@ final class OkfSpecRule {
   OkfSpecRuleDescriptor get descriptor => definition.descriptor;
 }
 
-typedef BaseRuleRun = Iterable<OkfFinding> Function(
+typedef SpecRuleRun = Iterable<OkfFinding> Function(
   OkfSpecFindingDefinition definition,
   SpecValidationContext context,
 );
 
-OkfSpecFindingDefinition baseFindingDefinition({
+OkfSpecFindingDefinition specFindingDefinition({
   required String code,
   required String prose,
   required OkfFindingSeverity severity,
@@ -49,14 +49,14 @@ OkfSpecFindingDefinition baseFindingDefinition({
       ),
     );
 
-OkfSpecRule baseRule({
+OkfSpecRule specRule({
   required String code,
   required String prose,
   required OkfFindingSeverity severity,
-  required BaseRuleRun run,
+  required SpecRuleRun run,
   String specReference = 'OKF 0.2',
 }) {
-  final definition = baseFindingDefinition(
+  final definition = specFindingDefinition(
     code: code,
     prose: prose,
     severity: severity,

@@ -4,11 +4,11 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
-import '../base_rules/load_rules.dart';
 import '../bundle.dart';
 import '../bundle_path.dart';
 import '../document.dart';
 import '../finding.dart';
+import '../spec_rules/load_findings.dart';
 import '../validator.dart';
 
 /// The result of inspecting an OKF bundle directory.
