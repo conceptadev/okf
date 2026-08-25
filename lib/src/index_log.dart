@@ -540,8 +540,8 @@ String _encodeAngleDestination(String value) => value.replaceAllMapped(
           Uri.encodeComponent(match.group(0)!),
     );
 
-/// Escapes for the ASCII members of [okfLinkDestinationUnsafe]; exotic
-/// whitespace falls back to `Uri.encodeComponent`.
+/// `Uri.encodeComponent` leaves parentheses unescaped, so the destination
+/// characters it cannot be trusted with carry their escapes here.
 const Map<String, String> _destinationEscapes = <String, String>{
   ' ': '%20',
   '\t': '%09',
