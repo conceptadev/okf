@@ -127,6 +127,65 @@ void main() {
     );
   });
 
+  test('parses angle-bracket destinations into canonical encoded links', () {
+    final parsed = OkfIndexDocument.parse(
+      '# References\n\n'
+      '* [Fee calculator](<C-Fee_NetPayCalculator20200601 (1).xlsx>) - '
+      'Verbatim original.\n',
+    );
+
+    expect(parsed.issues, isEmpty);
+    expect(
+      parsed.entries.single.link,
+      'C-Fee_NetPayCalculator20200601%20%281%29.xlsx',
+    );
+    expect(
+      parsed.toDocument().serialize(),
+      contains('(C-Fee_NetPayCalculator20200601%20%281%29.xlsx)'),
+    );
+  });
+
+  test('flags raw whitespace in a plain destination as non-portable', () {
+    // okf's line grammar tolerates the space, but no CommonMark parser
+    // reads this line as a link, so downstream consumers disagree.
+    final parsed = OkfIndexDocument.parse(
+      '# References\n\n* [Report](My Report.pdf) - Verbatim original.\n',
+    );
+
+    expect(
+      parsed.issues,
+      const <OkfIndexIssue>[OkfIndexIssue.nonPortableLink],
+    );
+    expect(parsed.entries.single.link, 'My Report.pdf');
+    expect(parsed.toDocument, throwsStateError);
+  });
+
+  test('writable links must percent-encode grammar-breaking characters', () {
+    OkfIndexDocument document(String link) => OkfIndexDocument(
+          entries: <OkfIndexEntry>[
+            OkfIndexEntry(
+              type: 'Reference',
+              title: 'Original',
+              link: link,
+              description: '',
+            ),
+          ],
+        );
+
+    for (final broken in <String>[
+      'My Report.pdf',
+      'C-Fee (1).xlsx',
+      'a)b.txt',
+      'a<b>.txt',
+    ]) {
+      expect(() => document(broken), throwsArgumentError, reason: broken);
+    }
+    expect(
+      document('C-Fee%20%281%29.xlsx').serialize(),
+      contains('(C-Fee%20%281%29.xlsx)'),
+    );
+  });
+
   test('index parsing reports structural problems in document order', () {
     final parsed = OkfIndexDocument.parse(
       '* [Orphan](orphan.md)\n\n# Empty\n\n# Things\n\nNarrative line.\n'

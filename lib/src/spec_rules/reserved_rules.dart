@@ -86,6 +86,17 @@ final List<OkfSpecRule> reservedRules = List<OkfSpecRule>.unmodifiable(
         'An index must contain at least one level-one section.',
       ),
     ),
+    _indexRule(
+      'non-portable-index-link',
+      'Index link destinations should be readable by CommonMark parsers.',
+      OkfFindingSeverity.advisory,
+      (source) => _issueMessages(
+        source.content.issues,
+        OkfIndexIssue.nonPortableLink,
+        'Index link destinations should percent-encode whitespace, '
+        'parentheses, and angle brackets, or use the angle-bracket form.',
+      ),
+    ),
     _logRule(
       'invalid-log-frontmatter',
       'Log files must not contain YAML frontmatter.',

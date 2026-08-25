@@ -128,6 +128,27 @@ Narrative instead of a list item.
     expect(codes, contains('okf/invalid-log-structure'));
   });
 
+  test('non-portable index links are advisory and stay conformant', () {
+    final bundle = OkfBundle.fromDocuments(
+      const <String, OkfDocument>{},
+      indexes: <String, String>{
+        'index.md': '''
+# References
+* [Report](My Report.pdf) - Verbatim original.
+''',
+      },
+      assets: const <String>['My Report.pdf'],
+    );
+
+    final report = const OkfSpecValidator().validate(bundle).report;
+
+    final finding = report.findings.singleWhere(
+      (candidate) => candidate.id.value == 'okf/non-portable-index-link',
+    );
+    expect(finding.severity, OkfFindingSeverity.advisory);
+    expect(OkfVerdict.of(report).exitCode, 0);
+  });
+
   test('optional family shape problems remain advisory', () {
     final bundle = OkfBundle.fromDocuments(<String, OkfDocument>{
       '計算.md': OkfDocument(
