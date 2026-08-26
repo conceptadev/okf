@@ -79,3 +79,18 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: bash tool/ci/publish-release.sh "$TAG" dist
+
+  pub-publish:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # exchanged by setup-dart for temporary pub.dev credentials
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dart-lang/setup-dart@7654d458321ee25acccccfdb86cd48bd95768ff1 # v1.8.0
+        with:
+          sdk: stable
+      - run: dart pub get
+      - run: dart pub publish --force
