@@ -17,6 +17,7 @@ conformance failure. “Advisory” is surfaced guidance that never changes
 | §6.1, §11 | Broken cross-links are accepted. | Conformant; graph retains an unresolved edge. | `test/conformance_test.dart`, `test/graph_test.dart` |
 | §8, §11.3 | A present `index.md` follows the index structure. | `okf/invalid-reserved-document` or an `okf/*index*` error. | `test/validator_test.dart` |
 | §8, §11 | Missing indexes are accepted. | Conformant. | `test/conformance_test.dart` |
+| §8, §11 | Index link destinations are percent-encoded or angle-bracketed; raw whitespace, parentheses, and angle brackets are surfaced guidance. | `okf/non-portable-index-link` advisory; still conformant. | `test/validator_test.dart`, `test/index_log_model_test.dart` |
 | §9, §11.3 | A present `log.md` follows the log structure and uses ISO dates. | `okf/invalid-reserved-document` or an `okf/*log*` error. | `test/validator_test.dart`, `test/conformance_test.dart` |
 | §10, §11 | Optional Attested Computation shape deviations are soft guidance. | Advisory findings only. | `test/validator_test.dart` |
 | §12 | Unknown declared versions are consumed best-effort. | `okf/unsupported-okf-version` advisory; still conformant. | `test/conformance_test.dart`, `test/validator_test.dart` |

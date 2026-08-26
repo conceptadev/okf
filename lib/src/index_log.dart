@@ -1,5 +1,6 @@
 import 'document.dart';
 import 'iso_date.dart';
+import 'link_path.dart';
 
 /// One entry in an OKF `index.md` document.
 final class OkfIndexEntry {
@@ -85,6 +86,10 @@ enum OkfIndexIssue {
 
   /// The document declared no level-one section.
   missingSection,
+
+  /// A plain link destination carried raw whitespace, parentheses, or angle
+  /// brackets, which CommonMark parsers do not read as a link.
+  nonPortableLink,
 }
 
 /// A structural problem in an OKF `log.md` document.
@@ -340,15 +345,21 @@ final class OkfLogDocument {
       issues.add(OkfIndexIssue.unrecognizedLine);
       continue;
     }
+    final angle = entry.namedGroup('angle');
+    final plain = entry.namedGroup('plain');
+    final link = angle != null ? _encodeAngleDestination(angle) : plain!;
+    if (angle == null && okfLinkDestinationUnsafe.hasMatch(plain!)) {
+      issues.add(OkfIndexIssue.nonPortableLink);
+    }
     if (type == null) {
       issues.add(OkfIndexIssue.entryBeforeSection);
     } else {
       entries.add(
         OkfIndexEntry(
           type: type,
-          title: _unescapeLinkLabel(entry.group(1)!),
-          link: entry.group(2)!,
-          description: entry.group(3)?.trim() ?? '',
+          title: _unescapeLinkLabel(entry.namedGroup('label')!),
+          link: link,
+          description: entry.namedGroup('description')?.trim() ?? '',
         ),
       );
     }
@@ -518,6 +529,28 @@ String _escapeHeading(String value) =>
 
 String _unescapeHeading(String value) => value.replaceAll(r'\#', '#');
 
+/// Converts an angle-bracket destination to the canonical encoded spelling.
+///
+/// Only the characters a plain destination cannot carry are encoded;
+/// existing percent escapes keep their CommonMark URL meaning.
+String _encodeAngleDestination(String value) => value.replaceAllMapped(
+      okfLinkDestinationUnsafe,
+      (match) =>
+          _destinationEscapes[match.group(0)] ??
+          Uri.encodeComponent(match.group(0)!),
+    );
+
+/// `Uri.encodeComponent` leaves parentheses unescaped, so the destination
+/// characters it cannot be trusted with carry their escapes here.
+const Map<String, String> _destinationEscapes = <String, String>{
+  ' ': '%20',
+  '\t': '%09',
+  '(': '%28',
+  ')': '%29',
+  '<': '%3C',
+  '>': '%3E',
+};
+
 String _escapeLinkLabel(String value) => _singleLine(
       value,
     ).replaceAll(r'\', r'\\').replaceAll('[', r'\[').replaceAll(']', r'\]');
@@ -542,14 +575,12 @@ List<OkfIndexEntry> _canonicalWritableIndexEntries(
     if (title.isEmpty) {
       throw ArgumentError.value(entry, 'entries', 'Title must not be blank');
     }
-    if (entry.link.isEmpty ||
-        entry.link.contains('\r') ||
-        entry.link.contains('\n') ||
-        entry.link.contains(')')) {
+    if (entry.link.isEmpty || okfLinkDestinationUnsafe.hasMatch(entry.link)) {
       throw ArgumentError.value(
         entry,
         'entries',
-        'Link cannot be empty or contain a line break or )',
+        'Link must percent-encode whitespace, parentheses, and angle '
+            'brackets',
       );
     }
     result.add(
@@ -626,7 +657,9 @@ final RegExp _whitespaceRun = RegExp(r'\s+');
 final RegExp _escapedCharacter = RegExp(r'\\(.)');
 final RegExp _levelOneHeading = RegExp(r'^# ([^#].*)$');
 final RegExp _indexEntry = RegExp(
-  r'^[*-] \[((?:\\.|[^\]])+)\]\(([^)]+)\)(?:\s+-\s+(.+))?$',
+  r'^[*-] \[(?<label>(?:\\.|[^\]])+)\]'
+  r'\((?:<(?<angle>[^<>]+)>|(?<plain>[^)]+))\)'
+  r'(?:\s+-\s+(?<description>.+))?$',
 );
 final RegExp _logDate = RegExp(r'^## (\d{4}-\d{2}-\d{2})$');
 final RegExp _logEntry = RegExp(r'^[*-] (?:\*\*(.+?)\*\*:\s+)?(.+)$');

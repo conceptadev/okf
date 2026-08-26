@@ -32,6 +32,7 @@ void main() {
         'okf/index-entry-before-section',
         'okf/invalid-index-structure',
         'okf/missing-index-section',
+        'okf/non-portable-index-link',
         'okf/invalid-log-frontmatter',
         'okf/missing-log-title',
         'okf/empty-log-date',

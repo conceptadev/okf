@@ -3,6 +3,7 @@ import 'package:path/path.dart' as p;
 
 import 'bundle.dart';
 import 'concept_id.dart';
+import 'link_path.dart';
 
 /// Current schema version emitted by [OkfGraph.toJson].
 const okfGraphJsonSchemaVersion = '1';
@@ -559,18 +560,10 @@ _ResolvedTarget _resolveTarget(
   if (_scheme.hasMatch(raw) || raw.startsWith('//')) {
     return const _ResolvedTarget(OkfGraphResolution.external);
   }
-  if (descriptorAllowed && !_looksLikePath(raw)) {
+  final cut = raw.indexOf(_queryOrFragment);
+  var pathPart = cut < 0 ? raw : raw.substring(0, cut);
+  if (descriptorAllowed && !_looksLikePath(pathPart)) {
     return const _ResolvedTarget(OkfGraphResolution.descriptor);
-  }
-
-  var pathPart = raw;
-  final fragment = pathPart.indexOf('#');
-  if (fragment >= 0) {
-    pathPart = pathPart.substring(0, fragment);
-  }
-  final query = pathPart.indexOf('?');
-  if (query >= 0) {
-    pathPart = pathPart.substring(0, query);
   }
   if (pathPart.isEmpty) {
     pathPart = '${source.basename}.md';
@@ -587,10 +580,8 @@ _ResolvedTarget _resolveTarget(
     if (rawSegment.isEmpty || rawSegment == '.') {
       continue;
     }
-    late final String segment;
-    try {
-      segment = Uri.decodeComponent(rawSegment);
-    } on FormatException {
+    final segment = decodeOkfLinkSegment(rawSegment);
+    if (segment == null) {
       return const _ResolvedTarget(OkfGraphResolution.invalid);
     }
     if (segment.contains('/') ||
@@ -637,18 +628,28 @@ _ResolvedTarget _resolveTarget(
   );
 }
 
-bool _looksLikePath(String value) {
-  final pathPart = value.split(RegExp(r'[?#]')).first;
-  if (pathPart.isEmpty ||
-      pathPart.startsWith('.') ||
+/// Whether [pathPart] (a target already stripped of query and fragment)
+/// names a bundle location rather than a prose source descriptor.
+bool _looksLikePath(String pathPart) {
+  if (pathPart.isEmpty) {
+    return true;
+  }
+  // Prose signals outrank the slash test: real source descriptors contain
+  // slashes ("extracted PDF/OOXML text"), while a genuine path is a single
+  // token — link paths percent-encode whitespace and never carry backticks.
+  if (_proseSignal.hasMatch(pathPart)) {
+    return false;
+  }
+  if (pathPart.startsWith('.') ||
       pathPart.startsWith('/') ||
       pathPart.contains('/')) {
     return true;
   }
-  final extension = p.posix.extension(pathPart);
-  return extension.isNotEmpty && !pathPart.contains(' ');
+  return p.posix.extension(pathPart).isNotEmpty;
 }
 
+final RegExp _proseSignal = RegExp(r'[`\s]');
+final RegExp _queryOrFragment = RegExp(r'[?#]');
 final RegExp _scheme = RegExp(r'^[A-Za-z][A-Za-z0-9+.-]*:');
 
 String? _scalarString(Object? value) {

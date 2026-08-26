@@ -93,6 +93,126 @@ See [the café](tables/caf%C3%A9.md), [missing](missing.md),
     expect(graph.toMermaid(), contains('missing.md'));
   });
 
+  test(
+      'resolves raw non-ASCII targets against the bundle instead of '
+      'crashing', () {
+    final bundle = OkfBundle.fromDocuments(
+      <String, OkfDocument>{
+        'overview.md': OkfDocument(
+          frontmatter: <String, Object?>{
+            'type': 'Reference',
+            'sources': <Object?>[
+              <String, Object?>{
+                'resource': 'references/Gap—Analysis-July29.pdf',
+              },
+              <String, Object?>{'resource': 'references/Missing—File.pdf'},
+            ],
+          },
+        ),
+      },
+      assets: <String>['references/Gap—Analysis-July29.pdf'],
+    );
+
+    final graph = OkfGraph.fromBundle(bundle);
+
+    final present = graph.edges.singleWhere(
+      (edge) => edge.rawTarget == 'references/Gap—Analysis-July29.pdf',
+    );
+    expect(present.resolution, OkfGraphResolution.resolvedAsset);
+    expect(present.resolvedPath, 'references/Gap—Analysis-July29.pdf');
+    final absent = graph.edges.singleWhere(
+      (edge) => edge.rawTarget == 'references/Missing—File.pdf',
+    );
+    expect(absent.resolution, OkfGraphResolution.unresolved);
+  });
+
+  test('classifies malformed percent escapes as invalid, not fatal', () {
+    // Body-link hrefs arrive parser-normalized (a stray `%` becomes `%25`),
+    // so raw malformed escapes only reach resolution through frontmatter
+    // targets. A target containing `%` that fails to decode is a genuinely
+    // broken escape — including a file literally named `100%`, by design.
+    final bundle = OkfBundle.fromDocuments(
+      <String, OkfDocument>{
+        'overview.md': OkfDocument(
+          frontmatter: <String, Object?>{
+            'type': 'Reference',
+            'sources': <Object?>[
+              <String, Object?>{'resource': 'refs/100%.md'},
+              <String, Object?>{'resource': 'refs/a%zz.md'},
+            ],
+          },
+          body: '[decodes](references/a%20b.txt)',
+        ),
+      },
+      assets: <String>['references/a b.txt'],
+    );
+
+    final graph = OkfGraph.fromBundle(bundle);
+
+    OkfGraphEdge edgeFor(String rawTarget) =>
+        graph.edges.singleWhere((edge) => edge.rawTarget == rawTarget);
+    expect(edgeFor('refs/100%.md').resolution, OkfGraphResolution.invalid);
+    expect(edgeFor('refs/a%zz.md').resolution, OkfGraphResolution.invalid);
+    final decoded = edgeFor('references/a%20b.txt');
+    expect(decoded.resolution, OkfGraphResolution.resolvedAsset);
+    expect(decoded.resolvedPath, 'references/a b.txt');
+  });
+
+  test(
+      'classifies prose source descriptors as descriptors even when they '
+      'contain slashes', () {
+    // Verbatim sources[].resource descriptors from the first real
+    // migration's QA corpus.
+    const descriptors = <String>[
+      'Concepta/Raul follow-up packet, 23 June 2026 — Concepta '
+          'current-understanding document, retained outside this bundle',
+      'Direct inspection of both post-baseline packages on 3 August 2026 — '
+          'file enumeration, extracted PDF/OOXML text, and a credential- and '
+          'commercial-value scan; method record, not mirrored',
+      'Waterstreet FMS / Anago CleanSuite sandbox at '
+          '`https://sandbox.waterstreet.net/anago/secure.cfm`, crawled '
+          'read-only during the same window',
+    ];
+    const paths = <String>[
+      'references/query.sql',
+      '../other/doc.md',
+      '/abs/path.md',
+      'notes.md',
+      'references/C-Fee%20%281%29.xlsx',
+    ];
+    final bundle = OkfBundle.fromDocuments(<String, OkfDocument>{
+      'overview.md': OkfDocument(
+        frontmatter: <String, Object?>{
+          'type': 'Reference',
+          'sources': <Object?>[
+            for (final target in <String>[...descriptors, ...paths])
+              <String, Object?>{'resource': target},
+          ],
+        },
+      ),
+    });
+
+    final graph = OkfGraph.fromBundle(bundle);
+
+    OkfGraphResolution resolutionFor(String rawTarget) => graph.edges
+        .singleWhere((edge) => edge.rawTarget == rawTarget)
+        .resolution;
+    for (final descriptor in descriptors) {
+      expect(
+        resolutionFor(descriptor),
+        OkfGraphResolution.descriptor,
+        reason: descriptor,
+      );
+    }
+    for (final path in paths) {
+      expect(
+        resolutionFor(path),
+        isNot(OkfGraphResolution.descriptor),
+        reason: path,
+      );
+    }
+  });
+
   test('checked-in JSON schema matches the graph wire contract', () async {
     final schema = jsonDecode(
       await File('schemas/graph-v1.schema.json').readAsString(),
