@@ -1,12 +1,14 @@
 .dart_tool/
+.changeset/
 .git/
 .github/
-.release-please-manifest.json
 action.yml
 build/
 coverage/
 doc/
 docs/
-release-please-config.json
+node_modules/
+package-lock.json
+package.json
 tool/
 test/ci_gate_test.dart
