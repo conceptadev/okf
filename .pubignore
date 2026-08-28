@@ -1,10 +1,12 @@
 .dart_tool/
 .git/
 .github/
+.release-please-manifest.json
 action.yml
 build/
 coverage/
 doc/
 docs/
+release-please-config.json
 tool/
 test/ci_gate_test.dart

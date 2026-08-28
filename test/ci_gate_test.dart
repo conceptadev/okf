@@ -10,6 +10,7 @@ void main() {
       'action.yml',
       '.github/workflows/ci.yml',
       '.github/workflows/release.yml',
+      '.github/workflows/release-please.yml',
     ]) {
       final source = File(path).readAsStringSync();
       expect(
@@ -18,6 +19,62 @@ void main() {
         reason: '$path contains a movable action reference',
       );
     }
+  });
+
+  test('release bot owns versions, changelog, tags, and release events', () {
+    final source =
+        File('.github/workflows/release-please.yml').readAsStringSync();
+    final workflow = loadYaml(source) as YamlMap;
+    final permissions = workflow['permissions'] as YamlMap;
+    final job = (workflow['jobs'] as YamlMap)['release-please'] as YamlMap;
+    final steps = job['steps'] as YamlList;
+    final action = steps[1] as YamlMap;
+
+    expect(permissions, <String, Object?>{'contents': 'read'});
+    expect(
+      action['uses'],
+      'googleapis/release-please-action@'
+      '45996ed1f6d02564a971a2fa1b5860e934307cf7',
+    );
+    expect(
+      (action['with'] as YamlMap)['token'],
+      r'${{ secrets.RELEASE_PLEASE_TOKEN }}',
+    );
+    expect(source, contains('Require the release bot token'));
+    expect(source, isNot(contains('gh workflow run')));
+
+    final config = jsonDecode(
+      File('release-please-config.json').readAsStringSync(),
+    ) as Map<String, Object?>;
+    expect(config['release-type'], 'dart');
+    expect(config['include-component-in-tag'], false);
+    expect(config['include-v-in-tag'], true);
+    expect(config['bump-minor-pre-major'], true);
+    expect(config['draft'], true);
+    expect(config['force-tag-creation'], true);
+    expect(
+      config.toString(),
+      allOf(contains('lib/src/version.dart'), contains('README.md')),
+    );
+    final package =
+        loadYaml(File('pubspec.yaml').readAsStringSync()) as YamlMap;
+    final packageVersion = package['version'] as String;
+    final manifest = jsonDecode(
+      File('.release-please-manifest.json').readAsStringSync(),
+    ) as Map<String, Object?>;
+    expect(manifest['.'], packageVersion);
+    expect(
+      File('lib/src/version.dart').readAsStringSync(),
+      contains("'$packageVersion'; // x-release-please-version"),
+    );
+    expect(
+      File('README.md').readAsStringSync(),
+      allOf(
+        contains('okf@v$packageVersion'),
+        contains('x-release-please-start-version'),
+        contains('x-release-please-end'),
+      ),
+    );
   });
 
   test('composite action checks out and validates with zero configuration', () {
@@ -252,9 +309,22 @@ exit "\${FAKE_ENGINE_EXIT:-0}"
       final binaries = jobs['binaries'] as YamlMap;
       final publishJob = jobs['publish'] as YamlMap;
       final publishPermissions = publishJob['permissions'] as YamlMap;
+      final pubPublishJob = jobs['pub-publish'] as YamlMap;
+      final pubPublishPermissions = pubPublishJob['permissions'] as YamlMap;
+      expect(jobs, contains('ref'));
       expect(permissions['contents'], 'read');
       expect(publishPermissions['actions'], 'read');
       expect(publishPermissions['contents'], 'write');
+      expect(pubPublishJob['needs'], 'publish');
+      expect(pubPublishPermissions['contents'], 'read');
+      expect(pubPublishPermissions['id-token'], 'write');
+      expect(
+        pubPublishJob.toString(),
+        allOf(
+          contains('dart-lang/setup-dart@'),
+          contains('dart pub publish --force'),
+        ),
+      );
       expect(binaries['needs'], <String>['platforms', 'verify']);
       expect(
         verify.toString(),
@@ -315,7 +385,10 @@ exit 0
       final calls = ghLog.readAsStringSync();
       expect(
         calls,
-        contains('api repos/conceptadev/okf/immutable-releases'),
+        contains(
+          'api repos/conceptadev/okf/releases/tags/v0.2.0 '
+          '--jq .immutable',
+        ),
       );
       expect(calls, contains('release create v0.2.0'));
       expect(calls, contains('release edit v0.2.0 --draft=false'));

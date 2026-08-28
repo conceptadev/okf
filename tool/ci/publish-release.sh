@@ -6,11 +6,6 @@ distribution="${2:?distribution directory is required}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 assets=()
 
-if [[ "$(gh api "repos/$GH_REPO/immutable-releases" --jq .enabled)" != true ]]; then
-  echo "okf: immutable releases must be enabled before publishing $tag" >&2
-  exit 1
-fi
-
 while IFS=$'\t' read -r runner_os _ _ asset; do
   [[ "$runner_os" == \#* ]] && continue
   path="$distribution/$asset"
@@ -32,3 +27,12 @@ else
     --verify-tag --generate-notes --draft
 fi
 gh release edit "$tag" --draft=false
+
+# The repository setting is not readable with the workflow's GITHUB_TOKEN.
+# Verify the published release instead, which checks the outcome that matters
+# and only requires the contents permission the job already has.
+if [[ "$(gh api "repos/$GH_REPO/releases/tags/$tag" --jq .immutable)" != true ]]; then
+  echo "okf: release $tag was published mutable; enable immutable releases" \
+    "for $GH_REPO before publishing another version" >&2
+  exit 1
+fi
