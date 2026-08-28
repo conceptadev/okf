@@ -61,6 +61,21 @@ final class OkfConceptId implements Comparable<OkfConceptId> {
   /// The concept's bundle-relative Markdown path.
   String get documentPath => '$value.md';
 
+  /// Whether this concept is [area] itself or lives under it as a directory.
+  ///
+  /// Matching is per whole segment: `architecture` matches `architecture` and
+  /// `architecture/decisions/adr-1`, never the unrelated `architecture-notes`.
+  /// Trailing slashes on [area] are ignored, so `architecture/` names the
+  /// same area.
+  bool isWithin(String area) {
+    var end = area.length;
+    while (end > 0 && area[end - 1] == '/') {
+      end--;
+    }
+    final normalized = area.substring(0, end);
+    return value == normalized || value.startsWith('$normalized/');
+  }
+
   @override
   int compareTo(OkfConceptId other) => value.compareTo(other.value);
 

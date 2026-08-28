@@ -119,7 +119,8 @@ final class OkfGraphQuery {
   /// Producer-defined concept types to include.
   final Set<String> conceptTypes;
 
-  /// Bundle-relative document path prefixes to include.
+  /// Bundle areas to include, matched per [OkfConceptId.isWithin]: a value
+  /// names a concept or a directory, and matches whole path segments only.
   final Set<String> pathPrefixes;
 
   /// Edge resolution states to include.
@@ -136,8 +137,7 @@ final class OkfGraphQuery {
 
   bool _matchesNode(OkfGraphNode node) =>
       (conceptTypes.isEmpty || conceptTypes.contains(node.type)) &&
-      (pathPrefixes.isEmpty ||
-          pathPrefixes.any(node.id.documentPath.startsWith));
+      (pathPrefixes.isEmpty || pathPrefixes.any(node.id.isWithin));
 
   bool _matchesEdge(OkfGraphEdge edge) =>
       resolutions.isEmpty || resolutions.contains(edge.resolution);

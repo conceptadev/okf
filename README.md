@@ -113,7 +113,7 @@ that edits files between calls never sees a stale answer.
 
 | Tool | Arguments | Returns |
 | --- | --- | --- |
-| `list-concepts` | none | Every concept with its type, title, status, and trust tier. |
+| `list-concepts` | `prefix`, `type`, `query` (all optional) | Concepts matching the filters, with type, title, status, and trust tier; an empty match reports the types and areas the bundle holds. |
 | `lookup-concept` | `id` | One concept, including its canonical Markdown. |
 | `query-graph` | `OkfGraphQuery.jsonSchema` | The versioned graph JSON that `okf graph --output json` emits. |
 | `validate` | `strict` | The Report `okf validate --output json` emits, plus the Verdict's `exit_code`. |

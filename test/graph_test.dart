@@ -303,6 +303,27 @@ See [the café](tables/caf%C3%A9.md), [missing](missing.md),
     );
   });
 
+  test('path prefixes match whole segments, never sibling directories', () {
+    final bundle = OkfBundle.fromDocuments(<String, OkfDocument>{
+      'analytics/primary.md': OkfDocument(
+        frontmatter: <String, Object?>{'type': 'Metric'},
+      ),
+      'analytics-archive/decoy.md': OkfDocument(
+        frontmatter: <String, Object?>{'type': 'Metric'},
+      ),
+    });
+
+    final graph = OkfGraph.fromBundle(
+      bundle,
+      query: OkfGraphQuery(pathPrefixes: const <String>['analytics']),
+    );
+
+    expect(
+      graph.nodes.map((node) => node.id.value),
+      <String>['analytics/primary'],
+    );
+  });
+
   test('filters a graph through the exported query vocabulary', () {
     final bundle = OkfBundle.fromDocuments(<String, OkfDocument>{
       'analytics/primary.md': OkfDocument(
