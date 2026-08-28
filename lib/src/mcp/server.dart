@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:mcp_dart/mcp_dart.dart';
 
+import '../bundle.dart';
 import '../bundle_change_set.dart';
 import '../concept_id.dart';
 import '../document.dart';
@@ -76,19 +77,35 @@ final class OkfMcpServer {
   void _registerReadTools(McpServer server) {
     server.registerTool(
       'list-concepts',
-      description: 'List every concept in the bundle with its metadata.',
+      description: 'List concepts with their metadata, optionally narrowed '
+          'by bundle area, concept type, or a text query.',
       inputSchema: JsonSchema.object(
-        properties: const <String, JsonSchema>{},
+        properties: <String, JsonSchema>{
+          'prefix': JsonSchema.string(
+            minLength: 1,
+            description: 'Bundle area to list: a concept whose ID is the '
+                'prefix or lives under it as a directory matches.',
+          ),
+          'type': JsonSchema.string(
+            minLength: 1,
+            description: 'Exact concept type to keep, spelled as the bundle '
+                'spells it; an empty result reports the types the bundle '
+                'actually holds.',
+          ),
+          'query': JsonSchema.string(
+            minLength: 1,
+            description: 'Case-insensitive substring matched against each '
+                'concept ID and title.',
+          ),
+        },
         additionalProperties: false,
       ),
       annotations: _readOnlyAnnotations,
       callback: (arguments, extra) => _readComplete((loaded) => _payload(
-            <String, Object?>{
-              'concepts': <Map<String, Object?>>[
-                for (final entry in loaded.bundle.concepts.entries)
-                  _conceptSummary(entry.key, entry.value),
-              ],
-            },
+            _conceptListing(
+              loaded.bundle,
+              _ConceptFilter.fromArguments(arguments),
+            ),
           )),
     );
 
@@ -393,12 +410,78 @@ Map<String, Object?> _managedFrontmatter(Map<String, Object?> arguments) =>
         'tags': tags.cast<String>(),
     };
 
+/// The optional narrowing a list call asks for.
+///
+/// The input schema has already been enforced when arguments reach
+/// [fromArguments], so each field is either absent or a non-empty string.
+final class _ConceptFilter {
+  const _ConceptFilter({this.prefix, this.type, this.query});
+
+  factory _ConceptFilter.fromArguments(Map<String, Object?> arguments) =>
+      _ConceptFilter(
+        prefix: arguments['prefix'] as String?,
+        type: arguments['type'] as String?,
+        query: (arguments['query'] as String?)?.toLowerCase(),
+      );
+
+  /// Bundle area matched per [OkfConceptId.isWithin].
+  final String? prefix;
+  final String? type;
+
+  /// Lower-cased needle matched against the ID and title, so an agent can ask
+  /// for "meeting" without knowing where in the bundle meetings live.
+  final String? query;
+
+  bool matches(OkfConceptId id, OkfDocument document) {
+    if (prefix case final String prefix when !id.isWithin(prefix)) {
+      return false;
+    }
+    if (type case final String type when document.type != type) {
+      return false;
+    }
+    if (query case final String query
+        when !id.value.toLowerCase().contains(query) &&
+            !(document.title ?? '').toLowerCase().contains(query)) {
+      return false;
+    }
+    return true;
+  }
+}
+
+/// The response to a list call: the summaries [filter] keeps and, when none
+/// survive in a non-empty bundle, the type and area vocabulary the bundle
+/// actually holds — so the caller corrects its filters in the same round trip
+/// instead of falling back to an unfiltered dump to find out what to ask for.
+Map<String, Object?> _conceptListing(OkfBundle bundle, _ConceptFilter filter) {
+  final concepts = <Map<String, Object?>>[
+    for (final entry in bundle.concepts.entries)
+      if (filter.matches(entry.key, entry.value))
+        _conceptSummary(entry.key, entry.value),
+  ];
+  return <String, Object?>{
+    'concepts': concepts,
+    if (concepts.isEmpty && bundle.concepts.isNotEmpty) ...{
+      'available_types': _histogram(<String>[
+        for (final document in bundle.concepts.values)
+          if (document.type case final String type) type,
+      ]),
+      'available_areas': _histogram(<String>[
+        for (final id in bundle.concepts.keys) id.segments.first,
+      ]),
+    },
+  };
+}
+
+/// The metadata every listing and lookup carries for a concept.
+///
+/// The document path is deliberately absent: it is always the ID plus the
+/// `.md` suffix, and repeating it once per concept is what pushed full-bundle
+/// listings past client tool-result limits.
 Map<String, Object?> _conceptSummary(OkfConceptId id, OkfDocument document) {
   final type = document.type;
   final title = document.title;
   return <String, Object?>{
     'id': id.value,
-    'path': id.documentPath,
     if (type != null) 'type': type,
     if (title != null) 'title': title,
     'status': document.status.wireValue,
@@ -406,22 +489,40 @@ Map<String, Object?> _conceptSummary(OkfConceptId id, OkfDocument document) {
   };
 }
 
-/// Returns [payload] both structured and serialized, because a client that
-/// predates structured tool results reads the text block instead.
-CallToolResult _payload(Map<String, Object?> payload) =>
-    CallToolResult.fromStructuredContent(payload);
+/// Counts [values], largest first, ties broken alphabetically so the same
+/// bundle always reports the same hint.
+Map<String, int> _histogram(Iterable<String> values) {
+  final counts = <String, int>{};
+  for (final value in values) {
+    counts[value] = (counts[value] ?? 0) + 1;
+  }
+  final entries = counts.entries.toList()
+    ..sort((a, b) {
+      final byCount = b.value.compareTo(a.value);
+      return byCount != 0 ? byCount : a.key.compareTo(b.key);
+    });
+  return <String, int>{for (final entry in entries) entry.key: entry.value};
+}
+
+/// Returns [payload] serialized once, as the text block alone.
+///
+/// Carrying a structured copy next to the serialized one doubled every
+/// result on the wire, which is what pushed full-bundle reads past client
+/// tool-result token limits.
+CallToolResult _payload(Map<String, Object?> payload) => CallToolResult(
+      content: <Content>[TextContent(text: jsonEncode(payload))],
+    );
 
 /// Refuses a call, carrying [report] so the caller learns why in one round
-/// trip instead of having to ask the validate tool.
-CallToolResult _error(String message, {OkfReport? report}) {
-  final payload =
-      report == null ? null : <String, Object?>{'report': report.toJson()};
-  return CallToolResult(
-    isError: true,
-    content: <Content>[
-      TextContent(text: message),
-      if (payload != null) TextContent(text: jsonEncode(payload)),
-    ],
-    structuredContent: payload,
-  );
-}
+/// trip instead of having to ask the validate tool. Like [_payload], the
+/// report is serialized exactly once — as the text block after the message.
+CallToolResult _error(String message, {OkfReport? report}) => CallToolResult(
+      isError: true,
+      content: <Content>[
+        TextContent(text: message),
+        if (report != null)
+          TextContent(
+            text: jsonEncode(<String, Object?>{'report': report.toJson()}),
+          ),
+      ],
+    );

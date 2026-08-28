@@ -122,17 +122,14 @@ void main() {
       });
 
       expect(tool['isError'], isNot(true));
-      final payload = tool['structuredContent']! as Map<String, Object?>;
+      final payload = _textPayload(tool);
       expect(payload['report'], jsonDecode(cli.stdout));
       expect(payload['exit_code'], cli.exitCode);
       expect(payload['strict'], strict);
     }
 
     expect(
-      _findingIds(
-        (await server.callTool('validate'))['structuredContent']!
-            as Map<String, Object?>,
-      ),
+      _findingIds(_textPayload(await server.callTool('validate'))),
       <String>['okf/invalid-status'],
     );
   });
@@ -194,7 +191,6 @@ void main() {
     expect(listed, <Map<String, Object?>>[
       <String, Object?>{
         'id': 'alpha',
-        'path': 'alpha.md',
         'type': 'Reference',
         'title': 'Alpha',
         'status': 'stable',
@@ -202,7 +198,6 @@ void main() {
       },
       <String, Object?>{
         'id': 'notes/beta',
-        'path': 'notes/beta.md',
         'type': 'Note',
         'title': 'Beta',
         'status': 'draft',
@@ -215,12 +210,109 @@ void main() {
       const <String, Object?>{'id': 'notes/beta'},
     );
     expect(looked['id'], 'notes/beta');
-    expect(looked['path'], 'notes/beta.md');
     expect(looked['status'], 'draft');
     expect(
       looked['markdown'],
       await File(p.join(bundle.path, 'notes', 'beta.md')).readAsString(),
     );
+  });
+
+  test('narrows a listing by area prefix and concept type', () async {
+    await writeConcept(bundle, 'alpha.md');
+    await writeConcept(bundle, 'notes/beta.md', type: 'Note', title: 'Beta');
+    await writeConcept(
+      bundle,
+      'notes-archive/gamma.md',
+      type: 'Note',
+      title: 'Gamma',
+    );
+    final server = await serve();
+
+    Future<List<Object?>> listedIds(Map<String, Object?> arguments) async {
+      final concepts = (await server.call(
+          'list-concepts', arguments))['concepts']! as List<Object?>;
+      return <Object?>[
+        for (final concept in concepts)
+          (concept! as Map<Object?, Object?>)['id'],
+      ];
+    }
+
+    expect(
+      await listedIds(const <String, Object?>{}),
+      <String>['alpha', 'notes-archive/gamma', 'notes/beta'],
+    );
+    expect(
+      await listedIds(const <String, Object?>{'prefix': 'notes'}),
+      <String>['notes/beta'],
+      reason: 'an area prefix must not match the sibling notes-archive',
+    );
+    expect(
+      await listedIds(const <String, Object?>{'prefix': 'notes/'}),
+      <String>['notes/beta'],
+    );
+    expect(
+      await listedIds(const <String, Object?>{'prefix': 'alpha'}),
+      <String>['alpha'],
+    );
+    expect(
+      await listedIds(const <String, Object?>{'type': 'Note'}),
+      <String>['notes-archive/gamma', 'notes/beta'],
+    );
+    expect(
+      await listedIds(const <String, Object?>{
+        'prefix': 'notes',
+        'type': 'Reference',
+      }),
+      isEmpty,
+    );
+    expect(
+      await listedIds(const <String, Object?>{'query': 'GAMMA'}),
+      <String>['notes-archive/gamma'],
+      reason: 'the query must match the title case-insensitively',
+    );
+    expect(
+      await listedIds(const <String, Object?>{'query': 'notes/b'}),
+      <String>['notes/beta'],
+      reason: 'the query must also match the concept ID',
+    );
+    expect(
+      await listedIds(const <String, Object?>{
+        'query': 'a',
+        'prefix': 'notes',
+        'type': 'Note',
+      }),
+      <String>['notes/beta'],
+    );
+  });
+
+  test('an empty listing reports the types and areas the bundle holds',
+      () async {
+    await writeConcept(bundle, 'alpha.md');
+    await writeConcept(bundle, 'notes/beta.md', type: 'Note', title: 'Beta');
+    await writeConcept(bundle, 'notes/gamma.md', type: 'Note', title: 'Gamma');
+    final server = await serve();
+
+    final missed = await server.call(
+      'list-concepts',
+      const <String, Object?>{'type': 'Metric'},
+    );
+    expect(missed['concepts'], isEmpty);
+    expect(
+      missed['available_types'],
+      <String, Object?>{'Note': 2, 'Reference': 1},
+    );
+    expect(
+      missed['available_areas'],
+      <String, Object?>{'notes': 2, 'alpha': 1},
+    );
+
+    final matched = await server.call(
+      'list-concepts',
+      const <String, Object?>{'type': 'Note'},
+    );
+    expect(matched['concepts'], hasLength(2));
+    expect(matched.containsKey('available_types'), isFalse,
+        reason: 'hints accompany empty results alone');
   });
 
   test('answers bad input with tool errors and keeps stdout JSON-RPC only',
@@ -268,7 +360,7 @@ void main() {
     );
     expect(unreadableGraph['isError'], isTrue);
     expect(
-      jsonEncode(unreadableGraph['structuredContent']),
+      jsonEncode(_errorReport(unreadableGraph)),
       contains('okf/invalid-document'),
     );
 
@@ -482,7 +574,7 @@ void main() {
     for (final error in rejected) {
       expect(error['isError'], isTrue, reason: '${error['content']}');
       expect(
-        error['structuredContent'],
+        _errorReport(error),
         isNull,
         reason: 'input that describes no bundle state carries no Report',
       );
@@ -506,7 +598,7 @@ void main() {
       'title': 'Reserved',
     });
     expect(reserved['isError'], isTrue);
-    expect(reserved['structuredContent'], isNull);
+    expect(_errorReport(reserved), isNull);
     expect(await snapshotBundle(bundle), before);
 
     await writeBundleFile(
@@ -522,7 +614,7 @@ void main() {
       'title': 'Churn',
     });
     expect(
-      _findingIds(refusedByLog['structuredContent']! as Map<String, Object?>),
+      _findingIds(_errorReport(refusedByLog)!),
       contains('okf/log-entry-before-date'),
       reason: 'a log the write path cannot re-emit refuses the whole change',
     );
@@ -789,7 +881,7 @@ void main() {
     );
     expect(refusal['isError'], isTrue);
     expect(
-      _findingIds(refusal['structuredContent']! as Map<String, Object?>),
+      _findingIds(_errorReport(refusal)!),
       contains('okf/missing-type'),
       reason: 'a refusal carries the finding IDs the CLI reports',
     );
@@ -815,7 +907,7 @@ void main() {
     ]) {
       expect(result['isError'], isTrue);
       expect(
-        jsonEncode(result['structuredContent']),
+        jsonEncode(_errorReport(result)),
         contains('invalid-document'),
       );
     }
@@ -823,11 +915,30 @@ void main() {
     final validation = await server.callTool('validate');
     expect(validation['isError'], isNot(true));
     expect(
-      jsonEncode(validation['structuredContent']),
+      jsonEncode(_textPayload(validation)),
       contains('okf/invalid-document'),
     );
     expect(await server.awaitDiagnostic(), contains('1 unreadable file(s)'));
   });
+}
+
+/// Decodes a successful tool result's payload from its single text block,
+/// where the server now carries it exactly once.
+Map<String, Object?> _textPayload(Map<String, Object?> result) {
+  final content = (result['content']! as List<Object?>).single;
+  final text = (content! as Map<String, Object?>)['text']! as String;
+  return jsonDecode(text) as Map<String, Object?>;
+}
+
+/// Decodes the Report payload a refusal carries as its second text block, or
+/// null for the plain errors that carry a message alone.
+Map<String, Object?>? _errorReport(Map<String, Object?> result) {
+  final content = result['content']! as List<Object?>;
+  if (content.length < 2) {
+    return null;
+  }
+  final text = (content[1]! as Map<String, Object?>)['text']! as String;
+  return jsonDecode(text) as Map<String, Object?>;
 }
 
 List<String> _findingIds(Map<String, Object?> payload) => <String>[
@@ -945,7 +1056,7 @@ final class _McpHarness {
   ]) async {
     final result = await callTool(name, arguments);
     expect(result['isError'], isNot(true), reason: '${result['content']}');
-    return result['structuredContent']! as Map<String, Object?>;
+    return _textPayload(result);
   }
 
   Future<Map<String, Object?>> callTool(

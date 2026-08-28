@@ -19,6 +19,25 @@ void main() {
       expect(OkfConceptId('has space').isPortableAscii, isFalse);
     });
 
+    test('locates itself within a bundle area', () {
+      final id = OkfConceptId('architecture/decisions/adr-1');
+
+      expect(id.isWithin('architecture'), isTrue);
+      expect(id.isWithin('architecture/'), isTrue);
+      expect(id.isWithin('architecture/decisions'), isTrue);
+      expect(id.isWithin('architecture/decisions/adr-1'), isTrue);
+      expect(id.isWithin('architecture/decisions/adr-1/deeper'), isFalse);
+      expect(
+        id.isWithin('arch'),
+        isFalse,
+        reason: 'matching is per whole segment, not per character',
+      );
+      expect(
+        OkfConceptId('architecture-notes/log-review').isWithin('architecture'),
+        isFalse,
+      );
+    });
+
     test('rejects suffixes, traversal, separators, and control characters', () {
       for (final value in <String>[
         '',
