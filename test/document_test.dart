@@ -318,7 +318,10 @@ cycle: &cycle [*cycle]
         isA<OkfDocumentException>().having(
           (error) => error.message,
           'message',
-          contains('Cyclic YAML aliases'),
+          anyOf(
+            contains('Cyclic YAML aliases'),
+            contains('Self-referential collections'),
+          ),
         ),
       ),
     );

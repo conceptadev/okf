@@ -10,7 +10,7 @@ void main() {
       'action.yml',
       '.github/workflows/ci.yml',
       '.github/workflows/release.yml',
-      '.github/workflows/release-please.yml',
+      '.github/workflows/release-pr.yml',
     ]) {
       final source = File(path).readAsStringSync();
       expect(
@@ -21,60 +21,129 @@ void main() {
     }
   });
 
-  test('release bot owns versions, changelog, tags, and release events', () {
-    final source =
-        File('.github/workflows/release-please.yml').readAsStringSync();
+  test('Changesets bot owns versions, changelog, tags, and dispatch', () {
+    final source = File('.github/workflows/release-pr.yml').readAsStringSync();
     final workflow = loadYaml(source) as YamlMap;
     final permissions = workflow['permissions'] as YamlMap;
-    final job = (workflow['jobs'] as YamlMap)['release-please'] as YamlMap;
+    final job = (workflow['jobs'] as YamlMap)['release'] as YamlMap;
     final steps = job['steps'] as YamlList;
-    final action = steps[1] as YamlMap;
+    final action = steps.cast<YamlMap>().singleWhere(
+          (step) =>
+              step['uses']?.toString().startsWith('changesets/action@') ??
+              false,
+        );
 
-    expect(permissions, <String, Object?>{'contents': 'read'});
+    expect(permissions['actions'], 'write');
+    expect(permissions['contents'], 'write');
+    expect(permissions['pull-requests'], 'write');
     expect(
       action['uses'],
-      'googleapis/release-please-action@'
-      '45996ed1f6d02564a971a2fa1b5860e934307cf7',
+      'changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1',
     );
+    final inputs = action['with'] as YamlMap;
+    expect(inputs['github-token'], r'${{ secrets.GITHUB_TOKEN }}');
+    expect(inputs['version-script'], 'npm run release:version');
+    expect(inputs['publish-script'], 'npm run release:tag');
+    expect(inputs['create-github-releases'], false);
+    expect(inputs['push-git-tags'], true);
     expect(
-      (action['with'] as YamlMap)['token'],
-      r'${{ secrets.RELEASE_PLEASE_TOKEN }}',
+      source,
+      allOf(
+        contains(r'gh workflow run ci.yml --ref "$branch"'),
+        contains(r'gh workflow run release.yml --ref "$tag"'),
+      ),
     );
-    expect(source, contains('Require the release bot token'));
-    expect(source, isNot(contains('gh workflow run')));
+    expect(source, isNot(contains('RELEASE_PLEASE_TOKEN')));
+    expect(source, isNot(contains('id-token: write')));
 
     final config = jsonDecode(
-      File('release-please-config.json').readAsStringSync(),
+      File('.changeset/config.json').readAsStringSync(),
     ) as Map<String, Object?>;
-    expect(config['release-type'], 'dart');
-    expect(config['include-component-in-tag'], false);
-    expect(config['include-v-in-tag'], true);
-    expect(config['bump-minor-pre-major'], true);
-    expect(config['draft'], true);
-    expect(config['force-tag-creation'], true);
+    expect(config['baseBranch'], 'main');
     expect(
-      config.toString(),
-      allOf(contains('lib/src/version.dart'), contains('README.md')),
+      config['privatePackages'],
+      <String, Object?>{'version': true, 'tag': true},
     );
-    final package =
+
+    final dartPackage =
         loadYaml(File('pubspec.yaml').readAsStringSync()) as YamlMap;
-    final packageVersion = package['version'] as String;
-    final manifest = jsonDecode(
-      File('.release-please-manifest.json').readAsStringSync(),
+    final nodePackage = jsonDecode(
+      File('package.json').readAsStringSync(),
     ) as Map<String, Object?>;
-    expect(manifest['.'], packageVersion);
+    final packageLock = jsonDecode(
+      File('package-lock.json').readAsStringSync(),
+    ) as Map<String, Object?>;
+    final packageVersion = dartPackage['version'] as String;
+    expect(nodePackage['name'], 'okf');
+    expect(nodePackage['private'], true);
+    expect(nodePackage['version'], packageVersion);
+    expect(packageLock['version'], packageVersion);
     expect(
       File('lib/src/version.dart').readAsStringSync(),
-      contains("'$packageVersion'; // x-release-please-version"),
+      contains("'$packageVersion';"),
     );
     expect(
       File('README.md').readAsStringSync(),
-      allOf(
-        contains('okf@v$packageVersion'),
-        contains('x-release-please-start-version'),
-        contains('x-release-please-end'),
-      ),
+      contains('okf@v$packageVersion'),
     );
+    expect(File('.changeset/README.md').existsSync(), true);
+    expect(File('release-please-config.json').existsSync(), false);
+    expect(File('.release-please-manifest.json').existsSync(), false);
+  });
+
+  test('release version synchronizer updates every Dart-facing version',
+      () async {
+    final temporary = Directory.systemTemp.createTempSync('okf-version-');
+    addTearDown(() => temporary.deleteSync(recursive: true));
+    Directory('${temporary.path}/lib/src').createSync(recursive: true);
+    File('${temporary.path}/package.json').writeAsStringSync(
+      '{"name":"okf","version":"1.2.3"}',
+    );
+    File('${temporary.path}/pubspec.yaml').writeAsStringSync(
+      'name: okf\nversion: 0.1.0\n',
+    );
+    File('${temporary.path}/lib/src/version.dart').writeAsStringSync(
+      "const okfPackageVersion = '0.1.0'; // stale\n",
+    );
+    File('${temporary.path}/README.md').writeAsStringSync(
+      'uses: conceptadev/okf@v0.1.0\n',
+    );
+    File('${temporary.path}/CHANGELOG.md').writeAsStringSync(
+      '## 1.2.3\n\n- Release.\n',
+    );
+
+    final update = await Process.run(
+      'dart',
+      <String>[
+        'run',
+        'tool/ci/sync_release_version.dart',
+        temporary.path,
+      ],
+    );
+    expect(update.exitCode, 0, reason: '${update.stderr}');
+    expect(
+      File('${temporary.path}/pubspec.yaml').readAsStringSync(),
+      contains('version: 1.2.3'),
+    );
+    expect(
+      File('${temporary.path}/lib/src/version.dart').readAsStringSync(),
+      contains("const okfPackageVersion = '1.2.3';"),
+    );
+    expect(
+      File('${temporary.path}/README.md').readAsStringSync(),
+      contains('conceptadev/okf@v1.2.3'),
+    );
+
+    final check = await Process.run(
+      'dart',
+      <String>[
+        'run',
+        'tool/ci/sync_release_version.dart',
+        '--check',
+        temporary.path,
+      ],
+    );
+    expect(check.exitCode, 0, reason: '${check.stderr}');
   });
 
   test('composite action checks out and validates with zero configuration', () {
@@ -349,10 +418,18 @@ exit "\${FAKE_ENGINE_EXIT:-0}"
           loadYaml(File('.github/dependabot.yml').readAsStringSync())
               as YamlMap;
       final actionUpdates =
-          (dependabot['updates'] as YamlList).single as YamlMap;
+          (dependabot['updates'] as YamlList).cast<YamlMap>().singleWhere(
+                (update) => update['package-ecosystem'] == 'github-actions',
+              );
       expect(actionUpdates['package-ecosystem'], 'github-actions');
       expect(actionUpdates['directory'], '/');
       expect((actionUpdates['schedule'] as YamlMap)['interval'], 'weekly');
+      expect(
+        (dependabot['updates'] as YamlList)
+            .cast<YamlMap>()
+            .any((update) => update['package-ecosystem'] == 'npm'),
+        true,
+      );
 
       final temporary = Directory.systemTemp.createTempSync('okf-release-');
       addTearDown(() => temporary.deleteSync(recursive: true));

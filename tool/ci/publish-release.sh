@@ -18,8 +18,22 @@ done < "$script_dir/platforms.tsv"
 
 if draft_state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null)"; then
   if [[ "$draft_state" != true ]]; then
-    echo "okf: release $tag is already public; refusing to mutate it" >&2
-    exit 1
+    if [[ "$(gh api "repos/$GH_REPO/releases/tags/$tag" --jq .immutable)" \
+      != true ]]; then
+      echo "okf: existing release $tag is not immutable" >&2
+      exit 1
+    fi
+    release_assets="$(gh release view "$tag" --json assets \
+      --jq '.assets[].name')"
+    for path in "${assets[@]}"; do
+      asset="${path##*/}"
+      grep -Fxq "$asset" <<< "$release_assets" || {
+        echo "okf: existing release $tag is missing $asset" >&2
+        exit 1
+      }
+    done
+    echo "okf: immutable release $tag is already complete"
+    exit 0
   fi
   gh release upload "$tag" "${assets[@]}" --clobber
 else

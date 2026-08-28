@@ -1,0 +1,14 @@
+{
+  "name": "okf",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Release metadata for the okf Dart package",
+  "scripts": {
+    "changeset": "changeset",
+    "release:version": "changeset version && npm install --package-lock-only --ignore-scripts && dart run tool/ci/sync_release_version.dart",
+    "release:tag": "bash tool/ci/prepare-release-tag.sh"
+  },
+  "devDependencies": {
+    "@changesets/cli": "3.0.1"
+  }
+}

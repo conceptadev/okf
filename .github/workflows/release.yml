@@ -3,9 +3,13 @@ name: Release
 on:
   push:
     tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
 
 jobs:
   ref:
@@ -103,8 +107,25 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dart-lang/setup-dart@7654d458321ee25acccccfdb86cd48bd95768ff1 # v1.8.0
+      - name: Check whether pub.dev already has this version
+        id: pub
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          if curl --fail --silent --show-error \
+            https://pub.dev/api/packages/okf | \
+            jq -e --arg version "$version" \
+              '.versions | any(.version == $version)' >/dev/null; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.pub.outputs.published != 'true'
+        uses: dart-lang/setup-dart@7654d458321ee25acccccfdb86cd48bd95768ff1 # v1.8.0
         with:
           sdk: stable
-      - run: dart pub get
-      - run: dart pub publish --force
+      - if: steps.pub.outputs.published != 'true'
+        run: dart pub get
+      - if: steps.pub.outputs.published != 'true'
+        run: dart pub publish --force

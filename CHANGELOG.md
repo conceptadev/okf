@@ -1,3 +1,5 @@
+# Changelog
+
 ## 0.3.0
 
 - Narrow MCP `list-concepts` with optional `prefix`, `type`, and `query`

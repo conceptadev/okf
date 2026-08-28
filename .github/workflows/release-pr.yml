@@ -1,0 +1,73 @@
+name: Release PR
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# GITHUB_TOKEN is created automatically for this job. The organization must
+# allow Actions to create pull requests; no user-managed GitHub token is used.
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-pr-${{ github.ref }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dart-lang/setup-dart@7654d458321ee25acccccfdb86cd48bd95768ff1 # v1.8.0
+        with:
+          sdk: stable
+      - run: npm ci
+      - run: dart pub get
+      - run: dart format --output=none --set-exit-if-changed .
+      - run: dart analyze --fatal-infos
+      - run: dart test
+      - run: dart pub publish --dry-run
+
+      - name: Create the release PR or tag the merged release
+        id: changesets
+        uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          version-script: npm run release:version
+          publish-script: npm run release:tag
+          pr-title: "chore: release okf"
+          commit-message: "chore: release okf"
+          create-github-releases: false
+          push-git-tags: true
+
+      # GITHUB_TOKEN-created PR events do not normally start other workflows,
+      # so dispatch CI explicitly at the bot branch.
+      - name: Check the release PR
+        if: steps.changesets.outputs.pr-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.changesets.outputs.pr-number }}
+        run: |
+          branch="$(gh pr view "$PR_NUMBER" --json headRefName --jq .headRefName)"
+          gh workflow run ci.yml --ref "$branch"
+
+      # Tags written with GITHUB_TOKEN do not emit another push workflow. A
+      # dispatch at the tag keeps the OIDC subject bound to a tag ref.
+      - name: Publish the tagged release
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.published-packages }}
+        run: |
+          tag="$(jq -r '.[0] | "v" + .version' <<< "$PUBLISHED_PACKAGES")"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          gh workflow run release.yml --ref "$tag"
