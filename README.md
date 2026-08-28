@@ -89,7 +89,7 @@ Gate a repository on OKF Spec conformance with one step and no configuration:
 
 ```yaml
 steps:
-  - uses: conceptadev/okf@v0.2.0
+  - uses: conceptadev/okf@v0.3.0
 ```
 
 <!-- x-release-please-end -->
