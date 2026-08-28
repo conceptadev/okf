@@ -1,24 +1,3 @@
-## 0.3.0
-
-- Narrow MCP `list-concepts` with optional `prefix`, `type`, and `query`
-  parameters: `prefix` names a bundle area, `type` keeps one concept type, and
-  `query` is a case-insensitive substring over concept IDs and titles. A
-  filtered listing that matches nothing reports the type and area vocabulary
-  the bundle actually holds, so a caller corrects its filters in one round
-  trip.
-- Serialize MCP tool results exactly once, as the JSON text block. Results no
-  longer carry a duplicate `structuredContent` copy, which doubled every
-  result on the wire; a client that read `structuredContent` reads the text
-  block instead.
-- Drop the `path` field from MCP concept summaries and lookups; it is always
-  the concept ID plus the `.md` suffix.
-- Match graph `path_prefixes` (CLI `--path-prefix`) per whole path segment
-  through the new `OkfConceptId.isWithin`: a value names a concept or a
-  directory, so `architecture` matches `architecture` and everything under
-  `architecture/`, and no longer the unrelated `architecture-notes`. A value
-  that named a full document path, such as `notes/beta.md`, becomes the
-  concept ID, `notes/beta`.
-
 ## 0.2.0
 
 - Add the engine contract types: findings, the immutable OKF Spec report and

@@ -85,10 +85,14 @@ okf validate path/to/bundle --output json
 
 Gate a repository on OKF Spec conformance with one step and no configuration:
 
+<!-- x-release-please-start-version -->
+
 ```yaml
 steps:
   - uses: conceptadev/okf@v0.2.0
 ```
+
+<!-- x-release-please-end -->
 
 The action downloads the released `okf` binary for the ref in `uses` and runs
 `okf validate` once. Before execution, it verifies the binary against the
