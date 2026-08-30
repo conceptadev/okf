@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:okf/okf_io.dart';
+import 'package:okf/src/io/bundle_lock.dart' show OkfBundleLock;
 import 'package:okf/src/version.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
@@ -62,6 +65,69 @@ void main() {
     );
     expect(missingBundle.exitCode, 2);
     expect(missingBundle.stderr, contains('not a directory'));
+  });
+
+  test('validation works on a bundle nothing may be written beside', () async {
+    if (Platform.isWindows) {
+      return;
+    }
+    final readOnlyParent = await Directory(
+      p.join(sandbox.path, 'read-only'),
+    ).create();
+    final readOnlyBundle = await Directory(
+      p.join(readOnlyParent.path, 'bundle'),
+    ).create();
+
+    final restricted = await Process.run(
+      'chmod',
+      <String>['0555', readOnlyParent.path],
+    );
+    expect(restricted.exitCode, 0, reason: '${restricted.stderr}');
+    late final CliResult result;
+    try {
+      result = await runCli(
+        <String>['validate', readOnlyBundle.path],
+        sandbox.path,
+      );
+    } finally {
+      final restored = await Process.run(
+        'chmod',
+        <String>['0755', readOnlyParent.path],
+      );
+      expect(restored.exitCode, 0, reason: '${restored.stderr}');
+    }
+
+    expect(result.exitCode, 0, reason: result.stderr);
+    expect(
+      await Directory(readOnlyParent.path).list().toList(),
+      hasLength(1),
+      reason: 'no coordination file may appear beside the bundle',
+    );
+  });
+
+  test('validation works on a bundle that cannot be written at all', () async {
+    if (Platform.isWindows) {
+      return;
+    }
+    await writeConcept(bundle, 'alpha.md');
+    final restricted = await Process.run(
+      'chmod',
+      <String>['0555', bundle.path],
+    );
+    expect(restricted.exitCode, 0, reason: '${restricted.stderr}');
+    late final CliResult result;
+    try {
+      result = await runCli(<String>['validate', 'bundle'], sandbox.path);
+    } finally {
+      final restored = await Process.run(
+        'chmod',
+        <String>['0755', bundle.path],
+      );
+      expect(restored.exitCode, 0, reason: '${restored.stderr}');
+    }
+
+    expect(result.exitCode, 0, reason: result.stderr);
+    expect(result.stdout, contains('1 concept(s) validated'));
   });
 
   test('validates bundles in text and JSON formats', () async {
@@ -168,6 +234,114 @@ void main() {
     );
     expect(secondCheck.exitCode, 0);
     expect(secondCheck.stdout, 'Already formatted.');
+  });
+
+  for (final command in <String>['format', 'index']) {
+    // The bundle lock queues claims in arrival order inside one isolate, so
+    // this reproduces the exact interleaving that used to lose the update:
+    // the command's read, then the concurrent write, then the command's own
+    // write. It only passes while the command holds a single claim across
+    // both halves.
+    test('$command keeps a concurrent accepted change', () async {
+      await writeConcept(bundle, 'alpha.md', title: 'Before');
+      final lockAcquired = Completer<void>();
+      final releaseLock = Completer<void>();
+      final holdingLock = OkfBundleLock.write(bundle.path, () async {
+        lockAcquired.complete();
+        await releaseLock.future;
+      });
+      await lockAcquired.future;
+
+      var cliDone = false;
+      final cli = runCli(<String>[command, 'bundle'], sandbox.path)
+          .whenComplete(() => cliDone = true);
+      await pumpEventQueue();
+      var changeDone = false;
+      final concurrentChange = const OkfBundleChangeApplier()
+          .apply(
+            bundle.path,
+            OkfBundleChangeSet(<OkfBundleChange>[
+              OkfUpdateConceptChange(
+                id: OkfConceptId('alpha'),
+                frontmatterChanges: const <String, Object?>{
+                  'title': 'Concurrent',
+                },
+              ),
+            ]),
+          )
+          .whenComplete(() => changeDone = true);
+      await pumpEventQueue();
+      expect(cliDone, isFalse, reason: 'the held claim must block $command');
+      expect(changeDone, isFalse, reason: 'the held claim must block the fix');
+
+      releaseLock.complete();
+      final cliResult = await cli.timeout(const Duration(seconds: 10));
+      final application =
+          await concurrentChange.timeout(const Duration(seconds: 10));
+      await holdingLock.timeout(const Duration(seconds: 10));
+      expect(cliResult.exitCode, 0, reason: cliResult.stderr);
+      expect(application, isA<OkfBundleApplied>());
+
+      final document = OkfDocument.parse(
+        await readBundleFile(bundle, 'alpha.md'),
+      );
+      final index = OkfIndexDocument.parse(
+        await readBundleFile(bundle, 'index.md'),
+      );
+      expect(document.title, 'Concurrent');
+      expect(index.entries.single.title, 'Concurrent');
+    });
+  }
+
+  test('formats a nested file without touching the rest of the bundle',
+      () async {
+    await writeConcept(bundle, 'alpha.md');
+    await writeBundleFile(
+      bundle,
+      'nested/beta.md',
+      '---\ntype: Reference\ntitle: Beta\n---\n\n# Beta',
+    );
+    final before = await snapshotBundle(bundle);
+
+    final result = await runCli(
+      <String>['format', p.join('bundle', 'nested', 'beta.md')],
+      sandbox.path,
+    );
+
+    expect(result.exitCode, 0, reason: result.stderr);
+    expect(result.stdout, 'Formatted 1 file(s).');
+    expect(
+      await readBundleFile(bundle, 'nested/beta.md'),
+      '---\ntype: Reference\ntitle: Beta\n---\n\n# Beta\n',
+    );
+    expect(
+      await readBundleFile(bundle, 'alpha.md'),
+      before['alpha.md'],
+    );
+    expect(
+      await File(p.join(bundle.path, 'nested', okfBundleLockFileName)).exists(),
+      isTrue,
+      reason: 'a file operand locks its own directory',
+    );
+  });
+
+  test('read-only commands leave no lock file in the bundle', () async {
+    await writeConcept(bundle, 'alpha.md');
+    final lockFile = File(p.join(bundle.path, okfBundleLockFileName));
+
+    for (final arguments in <List<String>>[
+      <String>['validate', 'bundle'],
+      <String>['graph', 'bundle'],
+      <String>['format', '--check', 'bundle'],
+      <String>['index', '--check', 'bundle'],
+    ]) {
+      await runCli(arguments, sandbox.path);
+      expect(
+        await lockFile.exists(),
+        isFalse,
+        reason: arguments.join(' '),
+      );
+    }
   });
 
   test('format refuses malformed input without partial writes', () async {

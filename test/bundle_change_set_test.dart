@@ -283,6 +283,25 @@ type: Reference
     expect(() => changes.commit(second), throwsStateError);
   });
 
+  test('commit ignores nested lock metadata created after prepare', () async {
+    final prepared = (await changes.prepare(root.path, _createChurn())
+            as OkfPreparationReady)
+        .prepared;
+    final nestedRoot = p.join(root.path, 'metrics');
+
+    await const OkfBundleWriter().writeAll(
+      nestedRoot,
+      const <String, String>{},
+    );
+
+    expect(
+      await File(p.join(nestedRoot, okfBundleLockFileName)).exists(),
+      isTrue,
+    );
+    final result = await changes.commit(prepared);
+    expect(result.changedPaths, contains('metrics/churn.md'));
+  });
+
   test('prepare rejects an uncommittable source topology', () async {
     await File(p.join(root.path, 'log.md')).delete();
     await _write(root, 'log.md/occupied.txt', 'not a log\n');
@@ -520,9 +539,9 @@ Future<String> _read(Directory root, String relativePath) =>
 Future<Map<String, String>> _snapshot(Directory root) async {
   final files = <String, String>{};
   await for (final entity in root.list(recursive: true, followLinks: false)) {
-    if (entity is File) {
-      files[p.relative(entity.path, from: root.path)] =
-          base64Encode(await entity.readAsBytes());
+    final relativePath = p.relative(entity.path, from: root.path);
+    if (entity is File && p.basename(relativePath) != okfBundleLockFileName) {
+      files[relativePath] = base64Encode(await entity.readAsBytes());
     }
   }
   return files;
