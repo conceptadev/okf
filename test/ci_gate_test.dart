@@ -146,6 +146,140 @@ void main() {
     expect(check.exitCode, 0, reason: '${check.stderr}');
   });
 
+  test('cli_pkg release tooling isolates its effective SDK floor', () {
+    final releasePubspecFile = File('tool/release/pubspec.yaml');
+    expect(releasePubspecFile.existsSync(), isTrue);
+
+    final packagePubspec =
+        loadYaml(File('pubspec.yaml').readAsStringSync()) as YamlMap;
+    final releasePubspec =
+        loadYaml(releasePubspecFile.readAsStringSync()) as YamlMap;
+    final releaseEnvironment = releasePubspec['environment'] as YamlMap;
+    final releaseDependencies = releasePubspec['dependencies'] as YamlMap;
+    final releaseDevDependencies =
+        releasePubspec['dev_dependencies'] as YamlMap;
+
+    expect((packagePubspec['environment'] as YamlMap)['sdk'], '>=3.4.0 <4.0.0');
+    expect(releasePubspec['name'], 'okf_release');
+    expect(releasePubspec['publish_to'], 'none');
+    expect(releaseEnvironment['sdk'], '>=3.11.0 <4.0.0');
+    expect(releaseDependencies['cli_pkg'], '2.15.2');
+    expect(releaseDependencies['grinder'], '0.10.0');
+    expect(releaseDependencies, hasLength(2));
+    expect(releaseDevDependencies['lints'], '^6.0.0');
+    expect(releaseDevDependencies['test'], '^1.25.8');
+    expect(
+      (packagePubspec['dev_dependencies'] as YamlMap),
+      isNot(contains('cli_pkg')),
+    );
+    final releaseLock =
+        loadYaml(File('tool/release/pubspec.lock').readAsStringSync())
+            as YamlMap;
+    final releasePackages = releaseLock['packages'] as YamlMap;
+    expect((releasePackages['cli_pkg'] as YamlMap)['version'], '2.15.2');
+    expect((releaseLock['sdks'] as YamlMap)['dart'], '>=3.11.0 <4.0.0');
+  });
+
+  test('release workflows use project deployment adapters', () {
+    final releaseSource =
+        File('.github/workflows/release.yml').readAsStringSync();
+    final releaseWorkflow = loadYaml(releaseSource) as YamlMap;
+    final releaseJobs = releaseWorkflow['jobs'] as YamlMap;
+    final verify = releaseJobs['verify'] as YamlMap;
+    final pubPublish = releaseJobs['pub-publish'] as YamlMap;
+    const releaseTool =
+        'dart --packages=tool/release/.dart_tool/package_config.json '
+        'tool/release/grind.dart';
+
+    expect(
+      releaseWorkflow.toString(),
+      allOf(
+        contains('$releaseTool okf-build-binary'),
+        contains('$releaseTool okf-deploy-github'),
+        contains('$releaseTool okf-deploy-pub'),
+      ),
+    );
+    expect(
+      verify.toString(),
+      allOf(
+        contains('dart format --output=none --set-exit-if-changed .'),
+        contains('dart analyze --fatal-infos'),
+        contains('dart run test'),
+        contains('dart pub publish --dry-run'),
+        contains('tool/release'),
+      ),
+    );
+    expect(
+      pubPublish.toString(),
+      allOf(
+        contains('dart-lang/setup-dart@'),
+        contains('dart pub -C tool/release get --enforce-lockfile'),
+        contains('okf-deploy-pub'),
+      ),
+    );
+    expect(
+      releaseSource,
+      isNot(
+        anyOf(
+          contains('dart compile exe bin/okf.dart'),
+          contains('bash tool/ci/publish-release.sh'),
+          contains('dart pub publish --force'),
+          contains('PUB_CREDENTIALS'),
+        ),
+      ),
+    );
+
+    final releaseTaskSource =
+        File('tool/release/grind.dart').readAsStringSync();
+    expect(
+      releaseTaskSource,
+      allOf(
+        contains('pkg.addStandaloneTasks()'),
+        contains("'tool/ci/publish-release.sh'"),
+        contains("const <String>['pub', 'publish', '--force']"),
+      ),
+    );
+    expect(
+      releaseTaskSource,
+      isNot(
+        anyOf(
+          contains('addGithubTasks'),
+          contains('addPubTasks'),
+          contains('PUB_CREDENTIALS'),
+        ),
+      ),
+    );
+
+    final ciWorkflow =
+        loadYaml(File('.github/workflows/ci.yml').readAsStringSync())
+            as YamlMap;
+    expect(
+      ciWorkflow.toString(),
+      allOf(
+        contains(
+          'dart format --output=none --set-exit-if-changed '
+          'bin example lib test tool/ci tool/generate_case_folding.dart',
+        ),
+        contains('dart pub -C tool/release get --enforce-lockfile'),
+        contains('working-directory: tool/release'),
+        contains('dart analyze --fatal-infos'),
+        contains('dart run test'),
+        contains('$releaseTool okf-build-binary'),
+      ),
+    );
+
+    final dependabot =
+        loadYaml(File('.github/dependabot.yml').readAsStringSync()) as YamlMap;
+    expect(
+      (dependabot['updates'] as YamlList).cast<YamlMap>().any(
+            (update) =>
+                update['package-ecosystem'] == 'pub' &&
+                update['directory'] == '/tool/release',
+          ),
+      true,
+    );
+  });
+
   test('composite action checks out and validates with zero configuration', () {
     final source = File('action.yml').readAsStringSync();
     final action = loadYaml(source) as YamlMap;
@@ -374,7 +508,6 @@ exit "\${FAKE_ENGINE_EXIT:-0}"
       final workflow = loadYaml(source) as YamlMap;
       final jobs = workflow['jobs'] as YamlMap;
       final permissions = workflow['permissions'] as YamlMap;
-      final verify = jobs['verify'] as YamlMap;
       final binaries = jobs['binaries'] as YamlMap;
       final publishJob = jobs['publish'] as YamlMap;
       final publishPermissions = publishJob['permissions'] as YamlMap;
@@ -387,28 +520,11 @@ exit "\${FAKE_ENGINE_EXIT:-0}"
       expect(pubPublishJob['needs'], 'publish');
       expect(pubPublishPermissions['contents'], 'read');
       expect(pubPublishPermissions['id-token'], 'write');
-      expect(
-        pubPublishJob.toString(),
-        allOf(
-          contains('dart-lang/setup-dart@'),
-          contains('dart pub publish --force'),
-        ),
-      );
       expect(binaries['needs'], <String>['platforms', 'verify']);
-      expect(
-        verify.toString(),
-        allOf(
-          contains('dart format --output=none --set-exit-if-changed .'),
-          contains('dart analyze --fatal-infos'),
-          contains('dart test'),
-          contains('dart pub publish --dry-run'),
-        ),
-      );
       expect(source, isNot(contains('@v4')));
       expect(source, isNot(contains('@v1')));
       expect(source, contains('persist-credentials: false'));
       expect(source, contains('release-matrix.sh'));
-      expect(source, contains('publish-release.sh'));
       expect(
         File('.pubignore').readAsLinesSync(),
         contains('test/ci_gate_test.dart'),
@@ -430,7 +546,6 @@ exit "\${FAKE_ENGINE_EXIT:-0}"
             .any((update) => update['package-ecosystem'] == 'npm'),
         true,
       );
-
       final temporary = Directory.systemTemp.createTempSync('okf-release-');
       addTearDown(() => temporary.deleteSync(recursive: true));
       final distribution = Directory('${temporary.path}/dist')..createSync();

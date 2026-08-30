@@ -46,9 +46,14 @@ jobs:
         with:
           sdk: stable
       - run: dart pub get
+      - run: dart pub -C tool/release get --enforce-lockfile
       - run: dart format --output=none --set-exit-if-changed .
       - run: dart analyze --fatal-infos
       - run: dart test
+      - working-directory: tool/release
+        run: dart analyze --fatal-infos
+      - working-directory: tool/release
+        run: dart run test
       - run: dart pub publish --dry-run
 
   binaries:
@@ -65,7 +70,12 @@ jobs:
         with:
           sdk: stable
       - run: dart pub get
-      - run: dart compile exe bin/okf.dart -o ${{ matrix.asset }}
+      - run: dart pub -C tool/release get --enforce-lockfile
+      - env:
+          ASSET: ${{ matrix.asset }}
+        run: >-
+          dart --packages=tool/release/.dart_tool/package_config.json
+          tool/release/grind.dart okf-build-binary
       - env:
           ASSET: ${{ matrix.asset }}
           TAG: ${{ github.ref_name }}
@@ -86,6 +96,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: dart-lang/setup-dart@7654d458321ee25acccccfdb86cd48bd95768ff1 # v1.8.0
+        with:
+          sdk: stable
+      - run: dart pub -C tool/release get --enforce-lockfile
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: okf-*
@@ -95,7 +109,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
-        run: bash tool/ci/publish-release.sh "$TAG" dist
+          DISTRIBUTION: dist
+        run: >-
+          dart --packages=tool/release/.dart_tool/package_config.json
+          tool/release/grind.dart okf-deploy-github
 
   pub-publish:
     needs: publish
@@ -128,4 +145,8 @@ jobs:
       - if: steps.pub.outputs.published != 'true'
         run: dart pub get
       - if: steps.pub.outputs.published != 'true'
-        run: dart pub publish --force
+        run: dart pub -C tool/release get --enforce-lockfile
+      - if: steps.pub.outputs.published != 'true'
+        run: >-
+          dart --packages=tool/release/.dart_tool/package_config.json
+          tool/release/grind.dart okf-deploy-pub
