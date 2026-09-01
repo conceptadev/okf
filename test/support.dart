@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:okf/okf_io.dart';
 import 'package:okf/src/cli.dart';
 import 'package:path/path.dart' as p;
 
@@ -49,16 +50,16 @@ Future<String> readBundleFile(Directory root, String relativePath) =>
 File _bundleFile(Directory root, String relativePath) =>
     File(p.joinAll(<String>[root.path, ...p.posix.split(relativePath)]));
 
-/// Reads every file under [root], keyed by bundle-relative path.
+/// Reads every bundle file under [root], keyed by bundle-relative path.
 ///
 /// Comparing two snapshots is how a test proves a refused write left the
-/// bundle untouched, rather than only checking the files it expected.
+/// bundle untouched. Coordination metadata is excluded.
 Future<Map<String, String>> snapshotBundle(Directory root) async {
   final files = <String, String>{};
   await for (final entity in root.list(recursive: true, followLinks: false)) {
-    if (entity is File) {
-      files[p.relative(entity.path, from: root.path)] =
-          await entity.readAsString();
+    final relativePath = p.relative(entity.path, from: root.path);
+    if (entity is File && p.basename(relativePath) != okfBundleLockFileName) {
+      files[relativePath] = await entity.readAsString();
     }
   }
   return files;

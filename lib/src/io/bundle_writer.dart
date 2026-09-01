@@ -8,7 +8,7 @@ import 'package:path/path.dart' as p;
 
 import '../bundle_path.dart';
 import '../document.dart';
-import 'bundle_apply_lock.dart';
+import 'bundle_lock.dart';
 
 /// The outcome of writing or checking a set of bundle files.
 final class OkfWriteResult {
@@ -72,25 +72,31 @@ final class OkfBundleWriter {
   ///
   /// When [checkOnly] is true the filesystem is not changed; the returned
   /// paths identify files that would be written.
+  ///
+  /// [expectedSources] maps paths to the text the caller read. A mismatch fails
+  /// the call instead of writing or reporting against stale content.
   Future<OkfWriteResult> writeAll(
     String rootPath,
     Map<String, String> files, {
     bool checkOnly = false,
+    Map<String, String> expectedSources = const <String, String>{},
   }) async {
     if (checkOnly) {
       final root = await _validatedRoot(rootPath, createIfMissing: false);
       return _writeAll(
         root,
         _normalizeFiles(files),
+        expectedSources,
         checkOnly: true,
       );
     }
-    await _createRootParent(rootPath);
-    return OkfBundleApplyLock.synchronized(rootPath, () async {
+    await _createRoot(rootPath);
+    return OkfBundleLock.write(rootPath, () async {
       final root = await _validatedRoot(rootPath, createIfMissing: true);
       return _writeAll(
         root,
         _normalizeFiles(files),
+        expectedSources,
         checkOnly: false,
       );
     });
@@ -173,7 +179,8 @@ final class OkfBundleWriter {
 
   Future<OkfWriteResult> _writeAll(
     Directory root,
-    SplayTreeMap<String, String> normalizedFiles, {
+    SplayTreeMap<String, String> normalizedFiles,
+    Map<String, String> expectedSources, {
     required bool checkOnly,
   }) async {
     final changed = <String>[];
@@ -186,6 +193,14 @@ final class OkfBundleWriter {
       final desiredBytes = utf8.encode(entry.value);
       final currentBytes =
           await destination.exists() ? await destination.readAsBytes() : null;
+      final expected = expectedSources[entry.key];
+      if (expected != null &&
+          !_bytesEqual(currentBytes, utf8.encode(expected))) {
+        throw FileSystemException(
+          'File changed after it was read; re-run the command',
+          destination.path,
+        );
+      }
       if (_bytesEqual(currentBytes, desiredBytes)) {
         continue;
       }
@@ -439,12 +454,16 @@ final class OkfBundleWriter {
   }
 }
 
-Future<void> _createRootParent(String rootPath) async {
+/// Creates a missing bundle root before its in-bundle lock is opened.
+Future<void> _createRoot(String rootPath) async {
   if (rootPath.trim().isEmpty) {
     throw const FileSystemException('Bundle root must not be empty');
   }
   final root = Directory(p.normalize(p.absolute(rootPath)));
-  await root.parent.create(recursive: true);
+  if (await FileSystemEntity.type(root.path, followLinks: false) ==
+      FileSystemEntityType.notFound) {
+    await root.create(recursive: true);
+  }
 }
 
 /// Package-internal transaction boundary used by the prepared write path.

@@ -11,8 +11,8 @@ import '../bundle_change_overlay.dart';
 import '../bundle_change_set.dart';
 import '../document.dart';
 import '../finding.dart';
-import 'bundle_apply_lock.dart';
 import 'bundle_loader.dart';
+import 'bundle_lock.dart';
 import 'bundle_writer.dart';
 
 part 'bundle_change_case_folding.dart';
@@ -39,7 +39,7 @@ final class OkfBundleChangeApplier {
 
   /// Commits exactly the bytes bound into [prepared].
   Future<OkfBundleCommitResult> commit(OkfPreparedChange prepared) =>
-      OkfBundleApplyLock.synchronized(
+      OkfBundleLock.write(
         prepared._plan.rootPath,
         () => _commitLocked(prepared),
       );
@@ -54,7 +54,7 @@ final class OkfBundleChangeApplier {
     String rootPath,
     OkfBundleChangeSet changes,
   ) =>
-      OkfBundleApplyLock.synchronized(rootPath, () async {
+      OkfBundleLock.write(rootPath, () async {
         final preparation = await _prepare(rootPath, changes);
         return switch (preparation) {
           OkfPreparationReady(prepared: final prepared) => OkfBundleApplied(
@@ -387,6 +387,9 @@ Future<_BundleSnapshot> _snapshot(
     final relative = p.posix.joinAll(
       p.split(p.relative(entity.path, from: root.path)),
     );
+    if (p.posix.basename(relative) == okfBundleLockFileName) {
+      continue;
+    }
     final type = await FileSystemEntity.type(entity.path, followLinks: false);
     if (type == FileSystemEntityType.file) {
       final file = File(entity.path);

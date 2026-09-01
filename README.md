@@ -173,6 +173,25 @@ Register the server with an MCP client by pointing it at the executable:
 }
 ```
 
+## Concurrency
+
+OKF coordinates concurrent operations through a reserved `.okf.lock` file at
+the bundle root. Reads share the lock and writes hold it exclusively, preventing
+one command from overwriting a newer change with an older snapshot.
+
+The lock file is empty and excluded from bundle inventories. Writers create it;
+`validate`, `graph`, and both `--check` modes use it when present but never
+create it, so read-only commands still work on bundles they cannot modify. Add
+the file to `.gitignore` if you do not want to commit it. Its name is exported
+as `okfBundleLockFileName` for tools that walk bundle directories directly.
+
+If a read starts before the first writer creates the file, it checks again and
+repeats under a shared lock when necessary. Locking is advisory, and POSIX file
+locks are process-scoped; applications using multiple isolates must serialize
+their own bundle access. Formatting a nested file cannot identify the enclosing
+bundle root, so it instead refuses to write or report against content that
+changed after it was read.
+
 ## Library
 
 Use `okf.dart` when working with in-memory documents:

@@ -10,7 +10,7 @@ import '../document.dart';
 import '../finding.dart';
 import '../spec_rules/load_findings.dart';
 import '../validator.dart';
-import 'bundle_apply_lock.dart';
+import 'bundle_lock.dart';
 
 /// The result of inspecting an OKF bundle directory.
 ///
@@ -139,7 +139,7 @@ final class OkfBundleLoader {
 
   /// Inventories and parses the bundle rooted at [rootPath].
   Future<OkfBundleLoadResult> inspect(String rootPath) =>
-      OkfBundleApplyLock.synchronized(rootPath, () => _inspect(rootPath));
+      OkfBundleLock.read(rootPath, () => _inspect(rootPath));
 
   Future<OkfBundleLoadResult> _inspect(String rootPath) async {
     final root = await _validatedRoot(rootPath);
@@ -155,6 +155,9 @@ final class OkfBundleLoader {
       }
 
       final relativePath = _relativePath(root.path, entity.path);
+      if (p.posix.basename(relativePath) == okfBundleLockFileName) {
+        continue;
+      }
       entities.add(_BundleEntry(relativePath, File(entity.path)));
     }
     entities.sort(

@@ -10,6 +10,7 @@ import 'finding.dart';
 import 'graph.dart';
 import 'index_generator.dart';
 import 'io/bundle_loader.dart';
+import 'io/bundle_lock.dart';
 import 'io/bundle_writer.dart';
 import 'mcp/server.dart';
 import 'spec_rules/load_findings.dart';
@@ -149,25 +150,49 @@ final class OkfCli {
       );
     }
 
-    late final String rootPath;
+    // A file operand can identify its directory, but not an enclosing bundle.
+    // `_formatLocked` also uses a source precondition for that case.
+    final rootPath =
+        type == FileSystemEntityType.file ? p.dirname(targetPath) : targetPath;
+    Future<_CliCommandResult> formatLocked() =>
+        _formatLocked(command, targetPath, rootPath, type);
+    if (command.flag('check')) {
+      final result = await OkfBundleLock.read(rootPath, formatLocked);
+      return _emitCommandResult(result);
+    }
+    return OkfBundleLock.write(
+      rootPath,
+      () async => _emitCommandResult(await formatLocked()),
+    );
+  }
+
+  Future<_CliCommandResult> _formatLocked(
+    ArgResults command,
+    String targetPath,
+    String rootPath,
+    FileSystemEntityType type,
+  ) async {
     final desired = <String, String>{};
     final findings = <OkfFinding>[];
+    // Protect nested file operands that cannot identify the enclosing bundle.
+    final expectedSources = <String, String>{};
     if (type == FileSystemEntityType.file) {
       if (!targetPath.endsWith('.md')) {
         throw const _OkfUsageException(
           'format accepts only .md files or bundle directories.',
         );
       }
-      rootPath = p.dirname(targetPath);
       final relativePath = p.basename(targetPath);
-      await _addFormattedFile(
-        File(targetPath),
+      final source = decodeMarkdown(
+        await File(targetPath).readAsBytes(),
         relativePath,
-        desired,
         findings,
       );
+      if (source != null) {
+        expectedSources[relativePath] = source;
+        _addFormattedSource(source, relativePath, desired, findings);
+      }
     } else if (type == FileSystemEntityType.directory) {
-      rootPath = targetPath;
       final loaded = await _loader.inspect(rootPath);
       findings.addAll(loaded.report.findings);
       for (final entry in loaded.documents.entries) {
@@ -195,8 +220,10 @@ final class OkfCli {
 
     final report = OkfReport(findings: findings);
     if (report.findings.isNotEmpty) {
-      _emitReport(report);
-      return OkfVerdict.of(report).exitCode;
+      return _CliCommandResult(
+        OkfVerdict.of(report).exitCode,
+        report.toTextLines(),
+      );
     }
 
     final checkOnly = command.flag('check');
@@ -204,25 +231,45 @@ final class OkfCli {
       rootPath,
       desired,
       checkOnly: checkOnly,
+      expectedSources: expectedSources,
     );
     if (checkOnly && writeResult.hasChanges) {
-      for (final path in writeResult.changedPaths) {
-        _out('Would format $path');
-      }
       // A check-mode exit is an adapter decision (ADR-0007).
-      return OkfExitCode.findings.value;
+      return _CliCommandResult(
+        OkfExitCode.findings.value,
+        writeResult.changedPaths.map((path) => 'Would format $path'),
+      );
     }
 
     if (writeResult.hasChanges) {
-      _out('Formatted ${writeResult.changedPaths.length} file(s).');
-    } else {
-      _out('Already formatted.');
+      return _CliCommandResult(
+        OkfExitCode.success.value,
+        <String>['Formatted ${writeResult.changedPaths.length} file(s).'],
+      );
     }
-    return OkfExitCode.success.value;
+    return _CliCommandResult(
+      OkfExitCode.success.value,
+      const <String>['Already formatted.'],
+    );
   }
 
   Future<int> _index(ArgResults command) async {
     final target = _resolve(_singleOperand(command));
+    Future<_CliCommandResult> indexLocked() => _indexLocked(command, target);
+    if (command.flag('check')) {
+      final result = await OkfBundleLock.read(target, indexLocked);
+      return _emitCommandResult(result);
+    }
+    return OkfBundleLock.write(
+      target,
+      () async => _emitCommandResult(await indexLocked()),
+    );
+  }
+
+  Future<_CliCommandResult> _indexLocked(
+    ArgResults command,
+    String target,
+  ) async {
     final loaded = await _loader.inspect(target);
     final generated = OkfIndexGenerator().generate(
       loaded.bundle,
@@ -239,8 +286,10 @@ final class OkfCli {
           .where((finding) => _blocksIndexGeneration(finding, generated)),
     ]);
     if (report.findings.isNotEmpty) {
-      _emitReport(report);
-      return OkfVerdict.of(report).exitCode;
+      return _CliCommandResult(
+        OkfVerdict.of(report).exitCode,
+        report.toTextLines(),
+      );
     }
 
     final checkOnly = command.flag('check');
@@ -250,19 +299,25 @@ final class OkfCli {
       checkOnly: checkOnly,
     );
     if (checkOnly && writeResult.hasChanges) {
-      for (final path in writeResult.changedPaths) {
-        _out('Index is stale: $path');
-      }
       // A check-mode exit is an adapter decision (ADR-0007).
-      return OkfExitCode.findings.value;
+      return _CliCommandResult(
+        OkfExitCode.findings.value,
+        writeResult.changedPaths.map((path) => 'Index is stale: $path'),
+      );
     }
 
     if (writeResult.hasChanges) {
-      _out('Generated ${writeResult.changedPaths.length} index file(s).');
-    } else {
-      _out('Indexes are current.');
+      return _CliCommandResult(
+        OkfExitCode.success.value,
+        <String>[
+          'Generated ${writeResult.changedPaths.length} index file(s).',
+        ],
+      );
     }
-    return OkfExitCode.success.value;
+    return _CliCommandResult(
+      OkfExitCode.success.value,
+      const <String>['Indexes are current.'],
+    );
   }
 
   Future<int> _graph(ArgResults command) async {
@@ -302,22 +357,6 @@ final class OkfCli {
     return OkfExitCode.success.value;
   }
 
-  Future<void> _addFormattedFile(
-    File file,
-    String relativePath,
-    Map<String, String> desired,
-    List<OkfFinding> findings,
-  ) async {
-    final source = decodeMarkdown(
-      await file.readAsBytes(),
-      relativePath,
-      findings,
-    );
-    if (source != null) {
-      _addFormattedSource(source, relativePath, desired, findings);
-    }
-  }
-
   void _addFormattedSource(
     String source,
     String relativePath,
@@ -331,6 +370,11 @@ final class OkfCli {
   }
 
   void _emitReport(OkfReport report) => report.toTextLines().forEach(_out);
+
+  int _emitCommandResult(_CliCommandResult result) {
+    result.output.forEach(_out);
+    return result.exitCode;
+  }
 
   String _singleOperand(ArgResults command) {
     if (command.rest.length != 1) {
@@ -511,6 +555,14 @@ final class _OkfUsageException implements Exception {
   const _OkfUsageException(this.message);
 
   final String message;
+}
+
+final class _CliCommandResult {
+  _CliCommandResult(this.exitCode, Iterable<String> output)
+      : output = List<String>.unmodifiable(output);
+
+  final int exitCode;
+  final List<String> output;
 }
 
 String _fileSystemMessage(FileSystemException error) {
