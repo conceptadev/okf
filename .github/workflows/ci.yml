@@ -25,8 +25,26 @@ jobs:
         with:
           sdk: ${{ matrix.sdk }}
       - run: dart pub get
-      - run: dart format --output=none --set-exit-if-changed .
+      - run: >-
+          dart format --output=none --set-exit-if-changed
+          bin example lib test tool/ci tool/generate_case_folding.dart
       - run: dart analyze --fatal-infos
       - run: dart test
       - if: matrix.os == 'ubuntu-latest' && matrix.sdk == 'stable'
         run: dart pub publish --dry-run
+      - if: matrix.os == 'ubuntu-latest' && matrix.sdk == 'stable'
+        run: dart pub -C tool/release get --enforce-lockfile
+      - if: matrix.os == 'ubuntu-latest' && matrix.sdk == 'stable'
+        working-directory: tool/release
+        run: |
+          dart format --output=none --set-exit-if-changed .
+          dart analyze --fatal-infos
+          dart run test
+      - if: matrix.os == 'ubuntu-latest' && matrix.sdk == 'stable'
+        env:
+          ASSET: build/okf-ci-test
+        run: >-
+          dart --packages=tool/release/.dart_tool/package_config.json
+          tool/release/grind.dart okf-build-binary
+      - if: matrix.os == 'ubuntu-latest' && matrix.sdk == 'stable'
+        run: ./build/okf-ci-test --version
