@@ -5,8 +5,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# GITHUB_TOKEN is created automatically for this job. The organization must
-# allow Actions to create pull requests; no user-managed GitHub token is used.
+# The automatic GITHUB_TOKEN cannot open pull requests here: the organization
+# blocks Actions from creating them. HOMEBREW_TAP_GH_TOKEN is a user-managed
+# token that can, and it must carry contents and pull-requests write on this
+# repository in addition to the Homebrew tap.
 permissions:
   actions: write
   contents: write
@@ -32,6 +34,10 @@ jobs:
           sdk: stable
       - run: npm ci
       - run: dart pub get
+      # Resolve the nested release package before formatting the whole tree.
+      # Without its package config, dart format falls back to the root
+      # language version and applies the pre-3.7 style to tool/release.
+      - run: dart pub -C tool/release get --enforce-lockfile
       - run: dart format --output=none --set-exit-if-changed .
       - run: dart analyze --fatal-infos
       - run: dart test
@@ -41,7 +47,7 @@ jobs:
         id: changesets
         uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.HOMEBREW_TAP_GH_TOKEN }}
           version-script: npm run release:version
           publish-script: npm run release:tag
           pr-title: "chore: release okf"
@@ -49,23 +55,25 @@ jobs:
           create-github-releases: false
           push-git-tags: true
 
-      # GITHUB_TOKEN-created PR events do not normally start other workflows,
-      # so dispatch CI explicitly at the bot branch.
+      # Dispatch CI explicitly at the bot branch. This also covered the old
+      # GITHUB_TOKEN, whose PR events never started other workflows; the
+      # dispatch stays because it is cheap and does not depend on which token
+      # opened the pull request.
       - name: Check the release PR
         if: steps.changesets.outputs.pr-number != ''
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_GH_TOKEN }}
           PR_NUMBER: ${{ steps.changesets.outputs.pr-number }}
         run: |
           branch="$(gh pr view "$PR_NUMBER" --json headRefName --jq .headRefName)"
           gh workflow run ci.yml --ref "$branch"
 
-      # Tags written with GITHUB_TOKEN do not emit another push workflow. A
-      # dispatch at the tag keeps the OIDC subject bound to a tag ref.
+      # Dispatch at the tag rather than relying on the tag push event, so the
+      # OIDC subject stays bound to a tag ref regardless of the pushing token.
       - name: Publish the tagged release
         if: steps.changesets.outputs.published == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_GH_TOKEN }}
           PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.published-packages }}
         run: |
           tag="$(jq -r '.[0] | "v" + .version' <<< "$PUBLISHED_PACKAGES")"

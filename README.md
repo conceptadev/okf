@@ -27,9 +27,13 @@ implementation and is not affiliated with or endorsed by Google.
 
 ## Install
 
-Requires Dart 3.9 or later.
+Install the command-line tool with Homebrew:
 
-Add the library:
+```console
+brew install conceptadev/tap/okf
+```
+
+With Dart 3.9 or later, add the library:
 
 ```console
 dart pub add okf

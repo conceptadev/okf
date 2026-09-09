@@ -37,6 +37,18 @@ Future<void> okfDeployGithub() async {
   );
 }
 
+@Task('Update the Homebrew tap formula from staged assets.')
+Future<void> okfDeployHomebrew() async {
+  await runAsync(
+    'bash',
+    arguments: <String>[
+      'tool/ci/publish-homebrew.sh',
+      _requiredEnvironment('TAG'),
+      _requiredEnvironment('DISTRIBUTION'),
+    ],
+  );
+}
+
 @Task('Publish the package using the configured pub.dev credentials.')
 Future<void> okfDeployPub() async {
   await runAsync(
