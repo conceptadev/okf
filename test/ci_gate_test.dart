@@ -307,6 +307,7 @@ void main() {
   });
 
   group(
+    // The composite action uses Bash and ships Linux/macOS binaries only.
     'supported runner behavior',
     () {
       test('checkout is requested only for an empty workspace', () async {

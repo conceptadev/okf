@@ -343,7 +343,7 @@ void main() {
     );
     expect(
       await listedIds(const <String, Object?>{'query': 'GAMMA'}),
-      <String>['notes-archive/gamma'],
+      equals(<String>['notes-archive/gamma']),
       reason: 'the query must match the title case-insensitively',
     );
     expect(
