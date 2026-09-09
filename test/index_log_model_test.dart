@@ -53,6 +53,29 @@ void main() {
     );
   });
 
+  test('index entry JSON supports edits without changing the link', () {
+    final entry = OkfIndexDocument.parse(
+      '# Metric\n\n* [Receita](receita%20l%C3%ADquida.md) - Original.\n',
+    ).entries.single;
+    final json = <String, Object?>{
+      'type': 'Metric',
+      'title': 'Receita',
+      'link': 'receita%20l%C3%ADquida.md',
+      'description': 'Original.',
+    };
+
+    expect(entry.toJson(), json);
+    final decoded = OkfIndexEntrySchema.fromJson(json);
+    expect(<OkfIndexEntry, String>{entry: 'original'}[decoded], 'original');
+
+    final edited = decoded.copyWith(title: 'Receita líquida', description: '');
+    expect(
+      OkfIndexDocument(entries: [edited]).serialize(),
+      '# Metric\n\n* [Receita líquida](receita%20l%C3%ADquida.md)\n',
+    );
+    expect(entry.toJson(), json);
+  });
+
   test('log entries survive an emit and parse round trip', () {
     final document = OkfLogDocument(
       title: 'Bundle Update Log',
@@ -342,6 +365,31 @@ void main() {
       ),
     ]);
     expect(parsed.toDocument, throwsStateError);
+  });
+
+  test('log entry JSON retains malformed dates until explicitly repaired', () {
+    final json = <String, Object?>{
+      'date': '2026-02-30',
+      'action': '',
+      'description': 'Still represented.',
+    };
+    final entry = OkfLogEntrySchema.fromJson(json);
+
+    expect(entry.toJson(), json);
+    expect(
+      () => OkfLogDocument(title: 'Log', entries: [entry]),
+      throwsArgumentError,
+    );
+
+    final repaired = entry.copyWith(date: '2026-02-28');
+    final document = OkfLogDocument(title: 'Log', entries: [repaired]);
+    expect(
+      document.serialize(),
+      '# Log\n\n## 2026-02-28\n\n* Still represented.\n',
+    );
+    final parsed = OkfLogDocument.parse(document.serialize());
+    expect(<OkfLogEntry>{repaired, parsed.entries.single}, hasLength(1));
+    expect(entry.toJson(), json);
   });
 
   test('parsed frontmatter cannot be silently discarded on re-emission', () {

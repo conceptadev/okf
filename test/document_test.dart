@@ -242,6 +242,24 @@ Body.
   });
 
   group('legacy citations', () {
+    test('citation JSON preserves the original Markdown spelling', () {
+      const raw = '[7] [Policy](../references/policy.md)';
+      final citation = OkfDocument(
+        body: '# Citations\n\n$raw\n',
+      ).legacyCitations.single;
+      final json = <String, Object?>{
+        'number': 7,
+        'title': 'Policy',
+        'target': '../references/policy.md',
+        'raw': raw,
+      };
+
+      expect(citation.toJson(), json);
+      final decoded = OkfLegacyCitationSchema.fromJson(json);
+      expect(<OkfLegacyCitation>{citation, decoded}, hasLength(1));
+      expect(decoded.raw, raw);
+    });
+
     test('extracts numbered links only from top-level Citations sections', () {
       final document = OkfDocument(
         frontmatter: <String, Object?>{'type': 'Reference'},

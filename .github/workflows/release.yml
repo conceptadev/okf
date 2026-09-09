@@ -46,7 +46,7 @@ jobs:
         with:
           sdk: stable
       - run: dart pub get
-      - name: Verify generated inputs are current
+      - name: Verify generated models are current
         run: dart run tool/ci/check_generated.dart
       - run: dart pub -C tool/release get --enforce-lockfile
       - run: dart format --output=none --set-exit-if-changed .

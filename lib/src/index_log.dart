@@ -1,9 +1,16 @@
+import 'package:ack/ack.dart';
+import 'package:ack_annotations/ack_annotations.dart';
+
 import 'document.dart';
 import 'iso_date.dart';
 import 'link_path.dart';
 
+part 'index_log.ack.dart';
+part 'index_log.ack.g.dart';
+
 /// One entry in an OKF `index.md` document.
-final class OkfIndexEntry {
+@AckModel()
+final class OkfIndexEntry with _$OkfIndexEntryAck {
   /// Creates an index entry.
   const OkfIndexEntry({
     required this.type,
@@ -23,22 +30,11 @@ final class OkfIndexEntry {
 
   /// A short summary, empty when none is available.
   final String description;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is OkfIndexEntry &&
-          type == other.type &&
-          title == other.title &&
-          link == other.link &&
-          description == other.description;
-
-  @override
-  int get hashCode => Object.hash(type, title, link, description);
 }
 
 /// One dated entry in an OKF `log.md` document.
-final class OkfLogEntry {
+@AckModel()
+final class OkfLogEntry with _$OkfLogEntryAck {
   /// Creates a log entry.
   const OkfLogEntry({
     required this.date,
@@ -57,17 +53,6 @@ final class OkfLogEntry {
 
   /// The Markdown description following the action label.
   final String description;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is OkfLogEntry &&
-          date == other.date &&
-          action == other.action &&
-          description == other.description;
-
-  @override
-  int get hashCode => Object.hash(date, action, description);
 }
 
 /// A structural problem in an OKF `index.md` document.
@@ -585,10 +570,9 @@ List<OkfIndexEntry> _canonicalWritableIndexEntries(
       );
     }
     result.add(
-      OkfIndexEntry(
+      entry.copyWith(
         type: type,
         title: title,
-        link: entry.link,
         description: _singleLine(entry.description),
       ),
     );
@@ -631,9 +615,7 @@ List<OkfLogEntry> _canonicalWritableLogEntries(Iterable<OkfLogEntry> entries) {
         'Description is blank or ambiguous with an action label',
       );
     }
-    canonical.add(
-      OkfLogEntry(date: entry.date, action: action, description: description),
-    );
+    canonical.add(entry.copyWith(action: action, description: description));
   }
   final byDate = _groupBy(canonical, (entry) => entry.date);
   final newestFirst = byDate.keys.toList()

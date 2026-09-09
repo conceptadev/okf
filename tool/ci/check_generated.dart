@@ -2,16 +2,20 @@ import 'dart:io';
 
 /// The Ack parts that `dart run build_runner build` writes.
 const _generatedPaths = <String>[
+  'lib/src/document.ack.dart',
+  'lib/src/document.ack.g.dart',
+  'lib/src/index_log.ack.dart',
+  'lib/src/index_log.ack.g.dart',
   'lib/src/mcp/inputs.ack.dart',
   'lib/src/mcp/inputs.ack.g.dart',
 ];
 
-/// Regenerates the Ack inputs and compares them with the committed parts.
+/// Regenerates the Ack models and compares them with the committed parts.
 ///
 /// The comparison is against `HEAD` rather than the working tree, so a staged
 /// or an untracked generated part fails here even though an ordinary
 /// `git diff` reports it as clean. Use `dart run build_runner build` while
-/// developing a schema change, and commit both parts before running this.
+/// developing a model or schema change, and commit all parts before running this.
 Future<void> main(List<String> arguments) async {
   if (arguments.isNotEmpty) {
     stderr.writeln('usage: dart run tool/ci/check_generated.dart');
@@ -59,8 +63,8 @@ Future<void> main(List<String> arguments) async {
   ]);
   if (unchanged != 0) {
     stderr.writeln(
-      'okf: the committed generated inputs are not current; run '
-      '`dart run build_runner build` and commit both parts',
+      'okf: the committed generated models are not current; run '
+      '`dart run build_runner build` and commit all parts',
     );
     exitCode = 1;
   }

@@ -1,10 +1,15 @@
 import 'dart:collection';
 
+import 'package:ack/ack.dart';
+import 'package:ack_annotations/ack_annotations.dart';
 import 'package:yaml/yaml.dart';
 
 import 'metadata.dart';
 import 'yaml_emitter.dart';
 import 'yaml_limits.dart';
+
+part 'document.ack.dart';
+part 'document.ack.g.dart';
 
 /// A failure to split or parse an OKF concept document.
 final class OkfDocumentException implements FormatException {
@@ -58,7 +63,10 @@ final class OkfDocumentException implements FormatException {
 }
 
 /// One entry from a legacy v0.1 `# Citations` section.
-final class OkfLegacyCitation {
+///
+/// OKF v0.2 §13.1 permits this fallback; current provenance uses `sources`.
+@AckModel()
+final class OkfLegacyCitation with _$OkfLegacyCitationAck {
   /// Creates a parsed legacy citation.
   const OkfLegacyCitation({
     required this.number,
@@ -78,18 +86,6 @@ final class OkfLegacyCitation {
 
   /// Original citation line, without surrounding whitespace.
   final String raw;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is OkfLegacyCitation &&
-          number == other.number &&
-          title == other.title &&
-          target == other.target &&
-          raw == other.raw;
-
-  @override
-  int get hashCode => Object.hash(number, title, target, raw);
 }
 
 /// An Open Knowledge Format document: YAML frontmatter and a Markdown body.

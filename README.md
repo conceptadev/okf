@@ -343,7 +343,20 @@ Inferring these optional inputs from nullable Dart fields with `@AckModel()`
 would also permit explicit nulls. Their wire contract therefore remains the
 source of truth through `@AckInfer()`.
 
-After changing an input schema, regenerate and commit both Ack parts:
+Index/log entries and legacy citation values use `@AckModel()` to generate
+equality, hashing, `copyWith`, and diagnostic strings. Their Markdown parsers
+and emitters still own the OKF document format. Entry constructors remain
+permissive so parsing can retain malformed content for validation.
+
+Ack 1.2 supports validation in generative constructors, but requires that
+constructor shape and rejects custom methods that override generated members.
+IDs, diagnostics, and documents keep their existing constructors and formatting.
+
+Legacy citation extraction is an optional v0.1 compatibility feature permitted
+by OKF v0.2 §13.1. Current provenance comes from `sources` frontmatter.
+
+After changing an annotated model or input schema, regenerate and commit its
+Ack parts:
 
 ```console
 dart pub get
@@ -358,13 +371,13 @@ CI runs the same check the following command runs:
 dart run tool/ci/check_generated.dart
 ```
 
-The command regenerates the inputs and compares them with the parts committed
+The command regenerates the models and compares them with the parts committed
 at `HEAD`. It checks committed artifacts, so it fails while a regenerated part
-is only staged or still untracked. Commit both parts, then run it. Use
+is only staged or still untracked. Commit all parts, then run it. Use
 `dart run build_runner build` alone while developing the change.
 
-Generated models belong to the MCP implementation and are not exported from
-the public OKF libraries.
+Generated MCP input classes stay internal. The annotated entry classes and
+their generated schema companions are available through the public OKF library.
 
 ## License
 

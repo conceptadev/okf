@@ -158,7 +158,7 @@ void main() {
       }
       for (final tool in ['create-concept', 'update-concept']) {
         final result = await server.callTool(tool, {
-          'id': 'alpha',
+          'id': tool == 'create-concept' ? 'beta' : 'alpha',
           'type': 'Note',
           'tags': ['same', 'same'],
         });
