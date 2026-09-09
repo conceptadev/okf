@@ -1,6 +1,13 @@
 import 'dart:collection';
 
-import 'yaml_limits.dart';
+// Parsing, snapshotting, and emitting share limits so a document accepted by
+// the parser can also be represented in a change set.
+
+/// The deepest nesting a YAML value may reach.
+const int maximumYamlDepth = 200;
+
+/// The most collection entries a single YAML value may contain in total.
+const int maximumYamlNodes = 100000;
 
 /// Recursively snapshots [source] as supported, immutable YAML data.
 ///
@@ -9,7 +16,7 @@ import 'yaml_limits.dart';
 /// booleans, and dates. Map keys must be supported scalar values. Cyclic and
 /// unsupported values, excessive nesting, and excessive collection sizes are
 /// rejected with [ArgumentError].
-Map<String, Object?> deepUnmodifiableJsonMap(Map<String, Object?> source) {
+Map<String, Object?> snapshotYamlMap(Map<String, Object?> source) {
   final state = _SnapshotState();
   return state._copyStringMap(source);
 }

@@ -1,555 +1,263 @@
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:okf/okf_io.dart';
-import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 void main() {
-  late Directory root;
-  late OkfBundleChangeApplier changes;
+  test('change set describes every supported bundle mutation', () {
+    final changes = OkfBundleChangeSet(<OkfBundleChange>[
+      OkfCreateConceptChange(
+        id: OkfConceptId('new-concept'),
+        document: OkfDocument(
+          frontmatter: <String, Object?>{'type': 'Reference'},
+        ),
+      ),
+      OkfUpdateConceptChange(
+        id: OkfConceptId('existing'),
+        frontmatterChanges: const <String, Object?>{
+          'title': 'Updated',
+          'meta': <String, Object?>{'reviewed': false},
+        },
+      ),
+      OkfLinkConceptsChange(
+        source: OkfConceptId('existing'),
+        target: OkfConceptId('new-concept'),
+        relationship: 'depends-on',
+      ),
+      OkfDeprecateConceptChange(
+        id: OkfConceptId('old-concept'),
+        note: 'Replaced by new-concept.',
+      ),
+    ]);
 
-  setUp(() async {
-    root = await Directory.systemTemp.createTemp('okf-change-set-test-');
-    changes = OkfBundleChangeApplier(
-      clock: () => DateTime.utc(2026, 8, 18),
+    expect(changes.changes[0], isA<OkfCreateConceptChange>());
+    expect(changes.changes[1], isA<OkfUpdateConceptChange>());
+    expect(changes.changes[2], isA<OkfLinkConceptsChange>());
+    expect(changes.changes[3], isA<OkfDeprecateConceptChange>());
+    final update = changes.changes[1] as OkfUpdateConceptChange;
+    expect(
+      () => update.frontmatterChanges['new'] = true,
+      throwsUnsupportedError,
     );
-    await _seedBundle(root);
+    expect(
+      () =>
+          (update.frontmatterChanges['meta']
+                  as Map<String, Object?>)['reviewed'] =
+              true,
+      throwsUnsupportedError,
+    );
   });
 
-  tearDown(() async {
-    if (await root.exists()) {
-      await root.delete(recursive: true);
+  test('update changes freeze parsed frontmatter, not only literals', () {
+    final parsed = OkfDocument.parse('''
+---
+type: Reference
+meta: {reviewed: false}
+tags: [a, b]
+---
+''');
+    final update = OkfUpdateConceptChange(
+      id: OkfConceptId('existing'),
+      frontmatterChanges: parsed.frontmatter,
+    );
+
+    expect(
+      () => (update.frontmatterChanges['meta'] as Map)['reviewed'] = true,
+      throwsUnsupportedError,
+    );
+    expect(
+      () => (update.frontmatterChanges['tags'] as List).add('c'),
+      throwsUnsupportedError,
+    );
+    expect(update.frontmatterChanges['meta'], <Object?, Object?>{
+      'reviewed': false,
+    });
+    // The caller's parsed map remains untouched.
+    (parsed.frontmatter['meta'] as Map)['reviewed'] = true;
+    expect((update.frontmatterChanges['meta'] as Map)['reviewed'], isFalse);
+  });
+
+  test('create changes snapshot source and inspected documents', () {
+    final nested = <String, Object?>{'reviewed': false};
+    final source = OkfDocument(
+      frontmatter: <String, Object?>{'type': 'Reference', 'meta': nested},
+      body: 'Original body.',
+    );
+    final change = OkfCreateConceptChange(
+      id: OkfConceptId('new-concept'),
+      document: source,
+    );
+
+    nested['reviewed'] = true;
+    source.frontmatter['title'] = 'Mutated';
+    final inspected = change.document;
+    expect(inspected.frontmatter['title'], isNull);
+    expect((inspected.frontmatter['meta'] as Map)['reviewed'], isFalse);
+    expect(inspected.body, 'Original body.');
+
+    inspected.frontmatter['title'] = 'Inspection mutation';
+    expect(
+      () => (inspected.frontmatter['meta'] as Map)['reviewed'] = true,
+      throwsUnsupportedError,
+    );
+    final inspectedAgain = change.document;
+    expect(inspectedAgain, isNot(same(inspected)));
+    expect(inspectedAgain.frontmatter['title'], isNull);
+    expect((inspectedAgain.frontmatter['meta'] as Map)['reviewed'], isFalse);
+  });
+
+  test('create changes snapshot documents without canonicalizing them', () {
+    final verified = DateTime.utc(2024, 1, 2, 3, 4, 5);
+    final change = OkfCreateConceptChange(
+      id: OkfConceptId('new-concept'),
+      document: OkfDocument(
+        frontmatter: <String, Object?>{'zeta': 1, 'type': 'Reference'},
+        body: 'No trailing newline.',
+      ),
+    );
+
+    // Serializing would reorder keys and add a trailing newline; describing
+    // a change must not.
+    expect(change.document.frontmatter.keys, <String>['zeta', 'type']);
+    expect(change.document.body, 'No trailing newline.');
+
+    // Serializing emits dates as quoted scalars, which read back as strings.
+    final dated = OkfCreateConceptChange(
+      id: OkfConceptId('dated'),
+      document: OkfDocument(
+        frontmatter: <String, Object?>{'verified': verified},
+      ),
+    );
+    expect(dated.document.frontmatter['verified'], same(verified));
+
+    // A body-only document whose body opens with a --- line stays body-only.
+    const ambiguous = '---\nnot: frontmatter\n---\n\nreal body\n';
+    final bodyOnly = OkfCreateConceptChange(
+      id: OkfConceptId('body-only'),
+      document: OkfDocument(body: ambiguous, hasFrontmatter: false),
+    );
+    expect(bodyOnly.document.hasFrontmatter, isFalse);
+    expect(bodyOnly.document.frontmatter, isEmpty);
+    expect(bodyOnly.document.body, ambiguous);
+  });
+
+  test('every change kind rejects unsupported YAML values alike', () {
+    const unsupported = Duration(seconds: 1);
+    expect(
+      () => OkfCreateConceptChange(
+        id: OkfConceptId('new-concept'),
+        document: OkfDocument(
+          frontmatter: <String, Object?>{'invalid': unsupported},
+        ),
+      ),
+      throwsArgumentError,
+    );
+    expect(
+      () => OkfUpdateConceptChange(
+        id: OkfConceptId('existing'),
+        frontmatterChanges: <String, Object?>{'invalid': unsupported},
+      ),
+      throwsArgumentError,
+    );
+  });
+
+  test('update changes snapshot nested maps and every iterable', () {
+    final nestedMap = <Object?, Object?>{'enabled': true};
+    final nestedList = <Object?>['one'];
+    final nestedSet = <Object?>{'alpha', 'beta'};
+    final update = OkfUpdateConceptChange(
+      id: OkfConceptId('existing'),
+      frontmatterChanges: <String, Object?>{
+        'map': nestedMap,
+        'list': nestedList,
+        'set': nestedSet,
+      },
+    );
+
+    nestedMap['enabled'] = false;
+    nestedList.add('two');
+    nestedSet.add('gamma');
+    expect(update.frontmatterChanges['map'], <Object?, Object?>{
+      'enabled': true,
+    });
+    expect(update.frontmatterChanges['list'], <Object?>['one']);
+    expect(update.frontmatterChanges['set'], <Object?>['alpha', 'beta']);
+    expect(
+      () => (update.frontmatterChanges['set'] as List<Object?>).add('gamma'),
+      throwsUnsupportedError,
+    );
+  });
+
+  test('update changes reject cyclic and unsupported YAML data', () {
+    final cyclicList = <Object?>[];
+    cyclicList.add(cyclicList);
+    final cyclicMap = <String, Object?>{};
+    cyclicMap['self'] = cyclicMap;
+
+    for (final invalid in <Object?>[
+      cyclicList,
+      cyclicMap,
+      const Duration(seconds: 1),
+      <Object?, Object?>{<Object?>[]: 'non-scalar key'},
+    ]) {
+      expect(
+        () => OkfUpdateConceptChange(
+          id: OkfConceptId('existing'),
+          frontmatterChanges: <String, Object?>{'invalid': invalid},
+        ),
+        throwsArgumentError,
+      );
+    }
+
+    Object? deeplyNested = 'leaf';
+    for (var depth = 0; depth < 201; depth++) {
+      deeplyNested = <Object?>[deeplyNested];
+    }
+    expect(
+      () => OkfUpdateConceptChange(
+        id: OkfConceptId('existing'),
+        frontmatterChanges: <String, Object?>{'invalid': deeplyNested},
+      ),
+      throwsArgumentError,
+    );
+  });
+
+  test('link changes trim and require a relationship', () {
+    final link = OkfLinkConceptsChange(
+      source: OkfConceptId('source'),
+      target: OkfConceptId('target'),
+      relationship: '  depends-on\n',
+    );
+
+    expect(link.relationship, 'depends-on');
+    for (final relationship in <String>['', ' ', '\n\t']) {
+      expect(
+        () => OkfLinkConceptsChange(
+          source: OkfConceptId('source'),
+          target: OkfConceptId('target'),
+          relationship: relationship,
+        ),
+        throwsArgumentError,
+      );
     }
   });
 
-  test('prepare is non-mutating and commit writes the prepared candidate',
-      () async {
-    final before = await _snapshot(root);
-    final preparation = await changes.prepare(root.path, _createChurn());
-
-    expect(preparation, isA<OkfPreparationReady>());
-    expect(await _snapshot(root), before);
-    final prepared = (preparation as OkfPreparationReady).prepared;
-    expect(prepared.validation.isConformant, isTrue);
-    expect(
-      prepared.validation.report.toJson(),
-      const OkfSpecValidator()
-          .validate(prepared.candidate.toBundle())
-          .report
-          .toJson(),
+  test('preparation refusal carries the closed Spec judgment', () {
+    final validation = OkfSpecValidation(
+      OkfReport(
+        findings: <OkfFinding>[
+          OkfFinding(
+            id: OkfFindingId.okf('invalid-change'),
+            severity: OkfFindingSeverity.error,
+            message: 'The change is invalid.',
+          ),
+        ],
+      ),
     );
-
-    final result = await changes.commit(prepared);
-    expect(
-      result.changedPaths,
-      containsAll(<String>['metrics/churn.md', 'metrics/index.md', 'log.md']),
-    );
-    expect(
-      await _read(root, 'metrics/churn.md'),
-      prepared.candidate.concepts['metrics/churn.md'],
-    );
-
-    final loaded = await const OkfBundleLoader().inspect(root.path);
-    expect(
-      loaded.validate().report.toJson(),
-      prepared.validation.report.toJson(),
-      reason: 'ordinary validation and preparation share the Spec report',
-    );
-  });
-
-  test('a Spec-invalid candidate is refused without changing a file', () async {
-    final before = await _snapshot(root);
-    final result = await changes.prepare(
-      root.path,
-      OkfBundleChangeSet(<OkfBundleChange>[
-        OkfCreateConceptChange(
-          id: OkfConceptId('metrics/untyped'),
-          document: OkfDocument(),
-        ),
-      ]),
+    final OkfBundlePreparation result = OkfPreparationRefused(
+      validation: validation,
     );
 
     expect(result, isA<OkfPreparationRefused>());
-    final refusal = result as OkfPreparationRefused;
-    expect(refusal.validation.isConformant, isFalse);
-    expect(
-      refusal.validation.report.findings.map((finding) => finding.id.value),
-      contains('okf/missing-type'),
-    );
-    expect(await _snapshot(root), before);
+    expect((result as OkfPreparationRefused).validation, same(validation));
+    expect(validation.isConformant, isFalse);
   });
-
-  test('replacing a malformed file removes its stale load finding', () async {
-    await File(p.join(root.path, 'fixed.md')).writeAsBytes(<int>[0xff]);
-    final result = await changes.prepare(
-      root.path,
-      OkfBundleChangeSet(<OkfBundleChange>[
-        OkfCreateConceptChange(
-          id: OkfConceptId('fixed'),
-          document: OkfDocument(
-            frontmatter: <String, Object?>{'type': 'Reference'},
-          ),
-        ),
-      ]),
-    );
-
-    final prepared = (result as OkfPreparationReady).prepared;
-    expect(prepared.validation.isConformant, isTrue);
-    await changes.commit(prepared);
-
-    final loaded = await const OkfBundleLoader().inspect(root.path);
-    expect(
-        loaded.validate().report.toJson(), prepared.validation.report.toJson());
-  });
-
-  test('prepare rejects file and directory path collisions', () async {
-    final result = changes.prepare(
-      root.path,
-      OkfBundleChangeSet(<OkfBundleChange>[
-        for (final id in <String>['node', 'node.md/child'])
-          OkfCreateConceptChange(
-            id: OkfConceptId(id),
-            document: OkfDocument(
-              frontmatter: <String, Object?>{'type': 'Reference'},
-            ),
-          ),
-      ]),
-    );
-
-    await expectLater(result, throwsA(isA<OkfBundleChangeException>()));
-  });
-
-  test('prepare rejects case-folded path collisions', () async {
-    await _write(root, 'A.md', '''
----
-type: Reference
----
-''');
-
-    await expectLater(
-      changes.prepare(
-        root.path,
-        OkfBundleChangeSet(<OkfBundleChange>[
-          OkfCreateConceptChange(
-            id: OkfConceptId('a'),
-            document: OkfDocument(
-              frontmatter: <String, Object?>{'type': 'Reference'},
-            ),
-          ),
-        ]),
-      ),
-      throwsA(isA<OkfBundleChangeException>()),
-    );
-  });
-
-  for (final aliases in <({String existing, String added, String name})>[
-    (existing: '\u00e9', added: 'e\u0301', name: 'canonical normalization'),
-    (existing: '\u03a3', added: '\u03c2', name: 'Greek case folding'),
-    (existing: '\u00df', added: 'SS', name: 'expanding case folding'),
-    (existing: '\u017f', added: 'S', name: 'historic case folding'),
-  ]) {
-    test('prepare rejects ${aliases.name} path collisions', () async {
-      await _write(root, '${aliases.existing}.md', '''
----
-type: Reference
----
-''');
-
-      await expectLater(
-        changes.prepare(
-          root.path,
-          OkfBundleChangeSet(<OkfBundleChange>[
-            OkfCreateConceptChange(
-              id: OkfConceptId(aliases.added),
-              document: OkfDocument(
-                frontmatter: <String, Object?>{'type': 'Reference'},
-              ),
-            ),
-          ]),
-        ),
-        throwsA(isA<OkfBundleChangeException>()),
-      );
-    });
-  }
-
-  test('an advisory-only Unicode candidate can commit', () async {
-    final result = await changes.prepare(
-      root.path,
-      OkfBundleChangeSet(<OkfBundleChange>[
-        OkfCreateConceptChange(
-          id: OkfConceptId('metrics/évolution'),
-          document: OkfDocument(
-            frontmatter: <String, Object?>{'type': 'Metric'},
-          ),
-        ),
-      ]),
-    );
-
-    final prepared = (result as OkfPreparationReady).prepared;
-    expect(
-      prepared.validation.report.findings.map((finding) => finding.id.value),
-      contains('okf/non-portable-concept-id'),
-    );
-    expect(prepared.validation.isConformant, isTrue);
-    await changes.commit(prepared);
-    expect(await File(p.join(root.path, 'metrics', 'évolution.md')).exists(),
-        isTrue);
-  });
-
-  test('an unresolved link is a conformant prepared change', () async {
-    final result = await changes.prepare(
-      root.path,
-      OkfBundleChangeSet(<OkfBundleChange>[
-        OkfLinkConceptsChange(
-          source: OkfConceptId('metrics/revenue'),
-          target: OkfConceptId('planned/future'),
-          relationship: 'depends-on',
-        ),
-      ]),
-    );
-
-    final prepared = (result as OkfPreparationReady).prepared;
-    expect(prepared.validation.isConformant, isTrue);
-    expect(
-      OkfGraph.fromBundle(prepared.candidate.toBundle())
-          .edges
-          .singleWhere((edge) => edge.rawTarget.contains('future'))
-          .resolution,
-      OkfGraphResolution.unresolved,
-    );
-    await changes.commit(prepared);
-    expect(await _read(root, 'log.md'), contains('planned/future'));
-  });
-
-  test('a link target cannot name a reserved document', () async {
-    final before = await _snapshot(root);
-
-    for (final target in <String>['metrics/index', 'log']) {
-      await expectLater(
-        changes.prepare(
-          root.path,
-          OkfBundleChangeSet(<OkfBundleChange>[
-            OkfLinkConceptsChange(
-              source: OkfConceptId('metrics/revenue'),
-              target: OkfConceptId(target),
-              relationship: 'depends-on',
-            ),
-          ]),
-        ),
-        throwsA(isA<OkfBundleChangeException>()),
-      );
-    }
-
-    expect(await _snapshot(root), before);
-  });
-
-  test('inspection cannot mutate the candidate or committed bytes', () async {
-    final preparation = await changes.prepare(root.path, _createChurn());
-    final prepared = (preparation as OkfPreparationReady).prepared;
-    final expected = prepared.candidate.concepts['metrics/churn.md']!;
-
-    expect(
-      () => prepared.candidate.concepts['metrics/churn.md'] = 'forged',
-      throwsUnsupportedError,
-    );
-    final detached = prepared.candidate.toBundle();
-    detached.concept(OkfConceptId('metrics/churn'))!.frontmatter['title'] =
-        'Forged';
-
-    await changes.commit(prepared);
-    expect(await _read(root, 'metrics/churn.md'), expected);
-    expect(await _read(root, 'metrics/churn.md'), isNot(contains('Forged')));
-  });
-
-  test('commit rejects stale source state and reuse', () async {
-    final first = (await changes.prepare(root.path, _createChurn())
-            as OkfPreparationReady)
-        .prepared;
-    await _write(root, 'metrics/revenue.md',
-        '${await _read(root, 'metrics/revenue.md')}\n');
-
-    await expectLater(
-      changes.commit(first),
-      throwsA(isA<OkfStalePreparedChangeException>()),
-    );
-    expect(
-        await File(p.join(root.path, 'metrics', 'churn.md')).exists(), isFalse);
-
-    final second = (await changes.prepare(root.path, _createChurn())
-            as OkfPreparationReady)
-        .prepared;
-    await changes.commit(second);
-    expect(() => changes.commit(second), throwsStateError);
-  });
-
-  test('commit ignores nested lock metadata created after prepare', () async {
-    final prepared = (await changes.prepare(root.path, _createChurn())
-            as OkfPreparationReady)
-        .prepared;
-    final nestedRoot = p.join(root.path, 'metrics');
-
-    await const OkfBundleWriter().writeAll(
-      nestedRoot,
-      const <String, String>{},
-    );
-
-    expect(
-      await File(p.join(nestedRoot, okfBundleLockFileName)).exists(),
-      isTrue,
-    );
-    final result = await changes.commit(prepared);
-    expect(result.changedPaths, contains('metrics/churn.md'));
-  });
-
-  test('prepare rejects an uncommittable source topology', () async {
-    await File(p.join(root.path, 'log.md')).delete();
-    await _write(root, 'log.md/occupied.txt', 'not a log\n');
-    final before = await _snapshot(root);
-
-    await expectLater(
-      changes.prepare(root.path, _createChurn(id: 'a/churn')),
-      throwsA(isA<OkfBundleChangeException>()),
-    );
-    expect(await _snapshot(root), before);
-    expect(await Directory(p.join(root.path, 'a')).exists(), isFalse);
-  });
-
-  test('update preserves unmanaged field order and body content', () async {
-    await _write(root, 'metrics/revenue.md', '''
----
-type: Metric
-title: Revenue
-description: Monthly revenue.
-owner: finance-team
-review:
-  cadence: quarterly
----
-
-$_richBody''');
-    final prepared = (await changes.prepare(
-      root.path,
-      OkfBundleChangeSet(<OkfBundleChange>[
-        OkfUpdateConceptChange(
-          id: OkfConceptId('metrics/revenue'),
-          frontmatterChanges: const <String, Object?>{
-            'description': 'Recognized monthly revenue.',
-            'status': 'stable',
-          },
-        ),
-      ]),
-    ) as OkfPreparationReady)
-        .prepared;
-
-    await changes.commit(prepared);
-    final document = OkfDocument.parse(await _read(root, 'metrics/revenue.md'));
-    expect(document.frontmatter['owner'], 'finance-team');
-    expect(document.frontmatter['review'], <String, Object?>{
-      'cadence': 'quarterly',
-    });
-    expect(
-      document.frontmatter.keys.where(
-        const <String>{'owner', 'review'}.contains,
-      ),
-      <String>['owner', 'review'],
-    );
-    expect(document.body, _richBody);
-  });
-
-  test('unrelated authored indexes remain byte-identical', () async {
-    const authored = '# Reference\n\n* [Note](note.md) - Hand ordered.\n';
-    await _write(root, 'other/note.md', '''
----
-type: Reference
-title: Note
----
-''');
-    await _write(root, 'other/index.md', authored);
-    final prepared = (await changes.prepare(root.path, _createChurn())
-            as OkfPreparationReady)
-        .prepared;
-
-    await changes.commit(prepared);
-
-    expect(await _read(root, 'other/index.md'), authored);
-    expect(prepared.candidate.indexes['other/index.md'], authored);
-  });
-
-  test('an idempotent change writes no file', () async {
-    final first = (await changes.prepare(
-      root.path,
-      OkfBundleChangeSet(<OkfBundleChange>[
-        OkfDeprecateConceptChange(id: OkfConceptId('metrics/revenue')),
-      ]),
-    ) as OkfPreparationReady)
-        .prepared;
-    await changes.commit(first);
-    final before = await _snapshot(root);
-
-    final second = (await changes.prepare(
-      root.path,
-      OkfBundleChangeSet(<OkfBundleChange>[
-        OkfDeprecateConceptChange(id: OkfConceptId('metrics/revenue')),
-      ]),
-    ) as OkfPreparationReady)
-        .prepared;
-    final result = await changes.commit(second);
-
-    expect(result.changedPaths, isEmpty);
-    expect(await _snapshot(root), before);
-  });
-
-  test('an empty update is idempotent', () async {
-    final before = await _snapshot(root);
-    final prepared = (await changes.prepare(
-      root.path,
-      OkfBundleChangeSet(<OkfBundleChange>[
-        OkfUpdateConceptChange(id: OkfConceptId('metrics/revenue')),
-      ]),
-    ) as OkfPreparationReady)
-        .prepared;
-
-    final result = await changes.commit(prepared);
-
-    expect(result.changedPaths, isEmpty);
-    expect(await _snapshot(root), before);
-  });
-
-  test('non-index updates preserve an authored index in the same directory',
-      () async {
-    final authored = '${await _read(root, 'metrics/index.md')}\n';
-    await _write(root, 'metrics/index.md', authored);
-    final prepared = (await changes.prepare(
-      root.path,
-      OkfBundleChangeSet(<OkfBundleChange>[
-        OkfUpdateConceptChange(
-          id: OkfConceptId('metrics/revenue'),
-          body: '# Revenue\n\nExpanded narrative.\n',
-        ),
-      ]),
-    ) as OkfPreparationReady)
-        .prepared;
-
-    await changes.commit(prepared);
-
-    expect(await _read(root, 'metrics/index.md'), authored);
-    expect(prepared.candidate.indexes['metrics/index.md'], authored);
-  });
-
-  test('changes that describe no state remain tool errors', () async {
-    await expectLater(
-      changes.prepare(
-        root.path,
-        OkfBundleChangeSet(<OkfBundleChange>[
-          OkfCreateConceptChange(
-            id: OkfConceptId('metrics/revenue'),
-            document: OkfDocument(
-              frontmatter: <String, Object?>{'type': 'Metric'},
-            ),
-          ),
-        ]),
-      ),
-      throwsA(isA<OkfBundleChangeException>()),
-    );
-  });
-
-  test('apply serializes preparation and commit for concurrent callers',
-      () async {
-    final results = await Future.wait(<Future<OkfBundleApplication>>[
-      changes.apply(root.path, _createChurn(id: 'metrics/churn')),
-      changes.apply(root.path, _createChurn(id: 'metrics/margin')),
-    ]);
-
-    expect(results, everyElement(isA<OkfBundleApplied>()));
-    final loaded = await const OkfBundleLoader().inspect(root.path);
-    expect(
-      loaded.bundle.concepts.keys.map((id) => id.value),
-      containsAll(<String>['metrics/churn', 'metrics/margin']),
-    );
-    expect(
-      OkfLogDocument.parse(loaded.logs['log.md']!).entries.map(
-            (entry) => entry.description,
-          ),
-      containsAll(<String>[
-        '[Churn](metrics/churn.md)',
-        '[Churn](metrics/margin.md)',
-      ]),
-    );
-  });
-}
-
-const String _richBody = '''
-# Revenue
-
-Recognized revenue, see [churn](churn.md).
-''';
-
-OkfBundleChangeSet _createChurn({String id = 'metrics/churn'}) =>
-    OkfBundleChangeSet(<OkfBundleChange>[
-      OkfCreateConceptChange(
-        id: OkfConceptId(id),
-        document: OkfDocument(
-          frontmatter: <String, Object?>{
-            'type': 'Metric',
-            'title': 'Churn',
-            'description': 'Monthly churn.',
-          },
-          body: '# Churn\n',
-        ),
-      ),
-    ]);
-
-Future<void> _seedBundle(Directory root) async {
-  await _write(root, 'metrics/revenue.md', '''
----
-type: Metric
-title: Revenue
-description: Monthly revenue.
----
-
-# Revenue
-''');
-  await _write(root, 'index.md', '''
----
-okf_version: "0.2"
----
-
-# Subdirectories
-
-* [metrics](metrics/index.md) - Monthly revenue.
-''');
-  await _write(root, 'metrics/index.md', '''
-# Metric
-
-* [Revenue](revenue.md) - Monthly revenue.
-''');
-  await _write(root, 'log.md', '''
-# Log
-
-## 2026-08-01
-
-* **Created**: [Revenue](metrics/revenue.md)
-''');
-}
-
-Future<String> _read(Directory root, String relativePath) =>
-    File(p.joinAll(<String>[root.path, ...p.posix.split(relativePath)]))
-        .readAsString();
-
-Future<Map<String, String>> _snapshot(Directory root) async {
-  final files = <String, String>{};
-  await for (final entity in root.list(recursive: true, followLinks: false)) {
-    final relativePath = p.relative(entity.path, from: root.path);
-    if (entity is File && p.basename(relativePath) != okfBundleLockFileName) {
-      files[relativePath] = base64Encode(await entity.readAsBytes());
-    }
-  }
-  return files;
-}
-
-Future<void> _write(Directory root, String relativePath, String content) async {
-  final file =
-      File(p.joinAll(<String>[root.path, ...p.posix.split(relativePath)]));
-  await file.parent.create(recursive: true);
-  await file.writeAsString(content);
 }

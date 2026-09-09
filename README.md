@@ -33,7 +33,7 @@ Install the command-line tool with Homebrew:
 brew install conceptadev/tap/okf
 ```
 
-Add the library:
+With Dart 3.9 or later, add the library:
 
 ```console
 dart pub add okf
@@ -109,6 +109,10 @@ Inputs:
 Releases attach an `okf-linux-x64` and an `okf-macos-arm64` binary, so the
 action runs on Linux and macOS runners.
 
+The Dart library and CLI are tested on Linux and Windows with Dart 3.9 and
+the current stable SDK. Windows support does not include this composite
+action or a prebuilt release binary; install the CLI through Dart on Windows.
+
 ## MCP server
 
 `okf mcp <bundle>` serves a Model Context Protocol surface over stdio, so a
@@ -133,6 +137,8 @@ and inputs — the same finding IDs, locations, and severities — and `strict`
 is the `--warnings-as-errors` flag, so an agent can
 reproduce the CI gate's judgment before pushing. Arguments are validated
 against each tool's schema; rejected arguments come back as a tool error.
+Invalid concept IDs identify the offending argument and the path rule it
+violates, so an agent can correct the call.
 
 ### Writes
 
@@ -322,6 +328,75 @@ Writes do not preserve platform-specific ACLs or extended attributes.
 The package models Attested Computation contracts but does not execute
 computations or attesters. Google Cloud enrichment, Gemini orchestration,
 web crawling, and the reference HTML viewer are outside this package.
+
+## Development
+
+Source files group related types with their behavior: document parsing and
+document values live together, as do graph queries, nodes, edges, and rendering.
+Finding values and rule metadata live in `finding.dart`; the internal rule
+engine lives in `spec_rules/`. Shared YAML limits and immutable snapshots live
+in `yaml_data.dart`. Filesystem operations and MCP transport have their own
+directories. Wire input models belong to MCP; domain types do not need a second
+set of models or DTOs solely for moving values between internal calls.
+
+Tests mirror those boundaries: domain tests live at `test/`, with `io/`,
+`mcp/`, and `spec_rules/` subdirectories matching the source. Repository
+automation checks live in `test/ci/`; process helpers live in `test/support/`.
+Run `dart test` from the package root to include every suite.
+
+MCP inputs use Ack's `@AckInfer()` schemas in `lib/src/mcp/inputs.dart`.
+The schema defines both runtime parsing and the JSON Schema advertised to
+clients. Schema-first generation preserves the distinction between omitted
+arguments and explicit nulls, including partial updates. Graph queries use
+a runtime Ack codec around the existing `OkfGraphQuery` API. Spec validation
+and tolerant YAML metadata keep their own contracts.
+
+Concept-ID codecs keep strings on the wire and decode through `OkfConceptId`.
+The advertised JSON Schema describes their string shape; runtime parsing
+enforces the domain's path rules. MCP and graph-query errors share a formatter
+that preserves nested field paths and reasons without producing an OKF Report.
+
+Inferring these optional inputs from nullable Dart fields with `@AckModel()`
+would also permit explicit nulls. Their wire contract therefore remains the
+source of truth through `@AckInfer()`.
+
+Index/log entries and legacy citation values use `@AckModel()` to generate
+equality, hashing, `copyWith`, and diagnostic strings. Their Markdown parsers
+and emitters still own the OKF document format. Entry constructors remain
+permissive so parsing can retain malformed content for validation.
+
+Ack 1.2 supports validation in generative constructors, but requires that
+constructor shape and rejects custom methods that override generated members.
+IDs, diagnostics, and documents retain their domain validation and custom
+formatting; switching their constructor syntax alone does not make them
+compatible with generated members.
+
+Legacy citation extraction is an optional v0.1 compatibility feature permitted
+by OKF v0.2 §13.1. Current provenance comes from `sources` frontmatter.
+
+After changing an annotated model or input schema, regenerate and commit its
+Ack parts:
+
+```console
+dart pub get
+dart run build_runner build
+dart analyze --fatal-infos
+dart test
+```
+
+CI runs the same check the following command runs:
+
+```console
+dart run tool/ci/check_generated.dart
+```
+
+The command regenerates the models and compares them with the parts committed
+at `HEAD`. It checks committed artifacts, so it fails while a regenerated part
+is only staged or still untracked. Commit all parts, then run it. Use
+`dart run build_runner build` alone while developing the change.
+
+Generated MCP input classes stay internal. The annotated entry classes and
+their generated schema companions are available through the public OKF library.
 
 ## License
 

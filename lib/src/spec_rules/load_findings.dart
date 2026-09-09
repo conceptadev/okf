@@ -9,35 +9,36 @@ import 'rule.dart';
 /// unreadable UTF-8, malformed documents, or invalid paths never survive into
 /// a bundle. Loading code therefore mints them directly instead of pretending
 /// they are executable bundle rules.
-final List<OkfSpecFindingDefinition> loadFindingDefinitions =
-    List<OkfSpecFindingDefinition>.unmodifiable(
-  <OkfSpecFindingDefinition>[
-    invalidDocumentFinding,
-    invalidPathFinding,
-    invalidUtf8Finding,
-  ],
-);
+final List<OkfSpecRuleDescriptor> loadFindingDescriptors =
+    List<OkfSpecRuleDescriptor>.unmodifiable(<OkfSpecRuleDescriptor>[
+      invalidDocumentFinding,
+      invalidPathFinding,
+      invalidUtf8Finding,
+    ]);
 
 /// `okf/invalid-document`: a Markdown document whose frontmatter or body
 /// could not be parsed.
-final OkfSpecFindingDefinition invalidDocumentFinding = specFindingDefinition(
-  code: 'invalid-document',
+final OkfSpecRuleDescriptor invalidDocumentFinding = OkfSpecRuleDescriptor(
+  id: OkfFindingId.okf('invalid-document'),
   prose: 'Markdown documents must parse, with well-formed YAML frontmatter.',
-  severity: OkfFindingSeverity.error,
+  defaultSeverity: OkfFindingSeverity.error,
+  specReference: 'OKF 0.2',
 );
 
 /// `okf/invalid-path`: a bundle entry whose relative path is not portable.
-final OkfSpecFindingDefinition invalidPathFinding = specFindingDefinition(
-  code: 'invalid-path',
+final OkfSpecRuleDescriptor invalidPathFinding = OkfSpecRuleDescriptor(
+  id: OkfFindingId.okf('invalid-path'),
   prose: 'Bundle entries must use valid relative POSIX paths.',
-  severity: OkfFindingSeverity.error,
+  defaultSeverity: OkfFindingSeverity.error,
+  specReference: 'OKF 0.2',
 );
 
 /// `okf/invalid-utf8`: a Markdown file that is not valid UTF-8.
-final OkfSpecFindingDefinition invalidUtf8Finding = specFindingDefinition(
-  code: 'invalid-utf8',
+final OkfSpecRuleDescriptor invalidUtf8Finding = OkfSpecRuleDescriptor(
+  id: OkfFindingId.okf('invalid-utf8'),
   prose: 'Markdown documents must contain valid UTF-8.',
-  severity: OkfFindingSeverity.error,
+  defaultSeverity: OkfFindingSeverity.error,
+  specReference: 'OKF 0.2',
 );
 
 /// Decodes [bytes] as strict UTF-8.

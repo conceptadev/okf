@@ -1,20 +1,20 @@
 import '../finding.dart';
 import '../index_log.dart';
-import 'context.dart';
 import 'rule.dart';
 
 /// Fixed Spec rules over reserved `index.md` and `log.md` documents, in
 /// validation order.
 final List<OkfSpecRule> reservedRules = List<OkfSpecRule>.unmodifiable(
   <OkfSpecRule>[
-    specRule(
+    OkfSpecRule(
       code: 'invalid-reserved-document',
       prose: 'Reserved index and log documents must be parseable.',
       severity: OkfFindingSeverity.error,
       run: (definition, context) => <OkfFinding>[
         for (final invalid in context.invalidDocuments)
           definition.finding(
-            message: 'Could not parse reserved document: '
+            message:
+                'Could not parse reserved document: '
                 '${invalid.error.message}',
             location: parseFailureLocation(invalid.path, invalid.error),
           ),
@@ -29,7 +29,7 @@ final List<OkfSpecRule> reservedRules = List<OkfSpecRule>.unmodifiable(
             !_isRootVersionFrontmatter(source))
           source.path == _rootIndexPath
               ? 'A root index frontmatter block may contain only a '
-                  'non-empty okf_version.'
+                    'non-empty okf_version.'
               : 'Only the bundle-root index may contain frontmatter.',
       ],
     ),
@@ -180,8 +180,8 @@ final List<OkfSpecRule> reservedRules = List<OkfSpecRule>.unmodifiable(
 );
 
 /// The messages one rule reports for a single parsed reserved document.
-typedef _ReservedCheck<T extends ParsedReservedDocument> = Iterable<String>
-    Function(T source);
+typedef _ReservedCheck<T extends ParsedReservedDocument> =
+    Iterable<String> Function(T source);
 
 /// A Spec rule that checks every parseable `index.md` independently.
 OkfSpecRule _indexRule(
@@ -189,14 +189,13 @@ OkfSpecRule _indexRule(
   String prose,
   OkfFindingSeverity severity,
   _ReservedCheck<ParsedIndexDocument> check,
-) =>
-    specRule(
-      code: code,
-      prose: prose,
-      severity: severity,
-      run: (definition, context) =>
-          _checkEach(definition, context.indexDocuments, check),
-    );
+) => OkfSpecRule(
+  code: code,
+  prose: prose,
+  severity: severity,
+  run: (definition, context) =>
+      _checkEach(definition, context.indexDocuments, check),
+);
 
 /// A Spec rule that checks every parseable `log.md` independently.
 OkfSpecRule _logRule(
@@ -204,30 +203,28 @@ OkfSpecRule _logRule(
   String prose,
   OkfFindingSeverity severity,
   _ReservedCheck<ParsedLogDocument> check,
-) =>
-    specRule(
-      code: code,
-      prose: prose,
-      severity: severity,
-      run: (definition, context) =>
-          _checkEach(definition, context.logDocuments, check),
-    );
+) => OkfSpecRule(
+  code: code,
+  prose: prose,
+  severity: severity,
+  run: (definition, context) =>
+      _checkEach(definition, context.logDocuments, check),
+);
 
-/// Runs [check] over every document in [files] that parses; unparseable
+/// Runs [check] over every document in [documents] that parses; unparseable
 /// documents are reported by `okf/invalid-reserved-document` alone.
 Iterable<OkfFinding> _checkEach<T extends ParsedReservedDocument>(
-  OkfSpecFindingDefinition definition,
+  OkfSpecRuleDescriptor definition,
   List<T> documents,
   _ReservedCheck<T> check,
-) =>
-    <OkfFinding>[
-      for (final document in documents)
-        for (final message in check(document))
-          definition.finding(
-            message: message,
-            location: OkfFindingLocation(path: document.path),
-          ),
-    ];
+) => <OkfFinding>[
+  for (final document in documents)
+    for (final message in check(document))
+      definition.finding(
+        message: message,
+        location: OkfFindingLocation(path: document.path),
+      ),
+];
 
 const String _rootIndexPath = 'index.md';
 
@@ -243,5 +240,4 @@ Iterable<String> _issueMessages<T extends Enum>(
   List<T> issues,
   T expected,
   String message,
-) =>
-    issues.where((issue) => issue == expected).map((_) => message);
+) => issues.where((issue) => issue == expected).map((_) => message);

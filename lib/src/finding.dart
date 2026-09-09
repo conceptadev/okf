@@ -74,6 +74,31 @@ enum OkfFindingSeverity {
   String get wireValue => name;
 }
 
+/// Read-only metadata describing one fixed OKF Spec rule.
+///
+/// Descriptors contain no executable function and cannot alter validation.
+final class OkfSpecRuleDescriptor {
+  /// Creates immutable rule metadata.
+  const OkfSpecRuleDescriptor({
+    required this.id,
+    required this.prose,
+    required this.defaultSeverity,
+    required this.specReference,
+  });
+
+  /// Stable `okf/<code>` finding ID.
+  final OkfFindingId id;
+
+  /// Human-readable statement of the condition checked.
+  final String prose;
+
+  /// Severity emitted when the condition is found.
+  final OkfFindingSeverity defaultSeverity;
+
+  /// Clause or tolerant-reader guidance in the pinned OKF revision.
+  final String specReference;
+}
+
 /// A reported source position associated with a bundle.
 final class OkfFindingLocation {
   /// Creates a source location.
@@ -84,11 +109,9 @@ final class OkfFindingLocation {
   ///
   /// [line] and [column] are one-based when present, and a column requires
   /// a line.
-  factory OkfFindingLocation({
-    required String path,
-    int? line,
-    int? column,
-  }) {
+  OkfFindingLocation({required this.path, this.line, this.column}) {
+    final line = this.line;
+    final column = this.column;
     if (path.isEmpty) {
       throw ArgumentError.value(path, 'path', 'must not be empty');
     }
@@ -101,14 +124,7 @@ final class OkfFindingLocation {
     if (column != null && line == null) {
       throw ArgumentError.value(column, 'column', 'requires a source line');
     }
-    return OkfFindingLocation._(path: path, line: line, column: column);
   }
-
-  const OkfFindingLocation._({
-    required this.path,
-    required this.line,
-    required this.column,
-  });
 
   /// The reported source path, which may identify a malformed bundle entry.
   final String path;
@@ -121,10 +137,10 @@ final class OkfFindingLocation {
 
   /// Projects this location as a JSON-compatible object.
   Map<String, Object?> toJson() => <String, Object?>{
-        'path': path,
-        if (line != null) 'line': line,
-        if (column != null) 'column': column,
-      };
+    'path': path,
+    if (line != null) 'line': line,
+    if (column != null) 'column': column,
+  };
 
   @override
   bool operator ==(Object other) =>
@@ -176,11 +192,11 @@ final class OkfFinding {
 
   /// Projects this finding as a JSON-compatible object.
   Map<String, Object?> toJson() => <String, Object?>{
-        'id': id.value,
-        'severity': severity.wireValue,
-        'message': message,
-        if (location != null) 'location': location!.toJson(),
-      };
+    'id': id.value,
+    'severity': severity.wireValue,
+    'message': message,
+    if (location != null) 'location': location!.toJson(),
+  };
 
   @override
   bool operator ==(Object other) =>
@@ -214,9 +230,9 @@ final class OkfReport {
   ///
   /// [findings] are rearranged into the canonical order.
   OkfReport({Iterable<OkfFinding> findings = const <OkfFinding>[]})
-      : findings = List<OkfFinding>.unmodifiable(
-          findings.toList()..sort(compareFindings),
-        );
+    : findings = List<OkfFinding>.unmodifiable(
+        findings.toList()..sort(compareFindings),
+      );
 
   /// Every finding in canonical order.
   final List<OkfFinding> findings;
@@ -224,18 +240,21 @@ final class OkfReport {
   /// The canonical ordering of report findings: path, line, column, ID,
   /// severity, message. Findings without a location sort first.
   static int compareFindings(OkfFinding left, OkfFinding right) {
-    var comparison =
-        (left.location?.path ?? '').compareTo(right.location?.path ?? '');
+    var comparison = (left.location?.path ?? '').compareTo(
+      right.location?.path ?? '',
+    );
     if (comparison != 0) {
       return comparison;
     }
-    comparison =
-        (left.location?.line ?? 0).compareTo(right.location?.line ?? 0);
+    comparison = (left.location?.line ?? 0).compareTo(
+      right.location?.line ?? 0,
+    );
     if (comparison != 0) {
       return comparison;
     }
-    comparison =
-        (left.location?.column ?? 0).compareTo(right.location?.column ?? 0);
+    comparison = (left.location?.column ?? 0).compareTo(
+      right.location?.column ?? 0,
+    );
     if (comparison != 0) {
       return comparison;
     }
@@ -256,10 +275,10 @@ final class OkfReport {
 
   /// Projects this report as a JSON-compatible object.
   Map<String, Object?> toJson() => <String, Object?>{
-        'findings': findings.map((finding) => finding.toJson()).toList(
-              growable: false,
-            ),
-      };
+    'findings': findings
+        .map((finding) => finding.toJson())
+        .toList(growable: false),
+  };
 }
 
 /// The closed OKF Spec judgment for one complete candidate bundle.
@@ -269,9 +288,9 @@ final class OkfReport {
 final class OkfSpecValidation {
   /// Judges [report] using the fixed OKF Spec conformance rule.
   OkfSpecValidation(this.report)
-      : isConformant = !report.findings.any(
-          (finding) => finding.severity == OkfFindingSeverity.error,
-        );
+    : isConformant = !report.findings.any(
+        (finding) => finding.severity == OkfFindingSeverity.error,
+      );
 
   /// The immutable OKF Spec report.
   final OkfReport report;
@@ -307,25 +326,16 @@ enum OkfExitCode {
 /// [OkfExitCode.success] or [OkfExitCode.findings]; [OkfExitCode.usage] is
 /// decided by an adapter before a report exists.
 final class OkfVerdict {
-  OkfVerdict._({
-    required this.report,
-    required this.strict,
-    required this.result,
-  });
-
   /// Judges [report] under the adapter validation exit-code matrix.
-  factory OkfVerdict.of(OkfReport report, {bool strict = false}) {
-    final fails = report.findings.any(
-      (finding) =>
-          finding.severity == OkfFindingSeverity.error ||
-          strict && finding.severity == OkfFindingSeverity.advisory,
-    );
-    return OkfVerdict._(
-      report: report,
-      strict: strict,
-      result: fails ? OkfExitCode.findings : OkfExitCode.success,
-    );
-  }
+  OkfVerdict.of(this.report, {this.strict = false})
+    : result =
+          report.findings.any(
+            (finding) =>
+                finding.severity == OkfFindingSeverity.error ||
+                strict && finding.severity == OkfFindingSeverity.advisory,
+          )
+          ? OkfExitCode.findings
+          : OkfExitCode.success;
 
   /// The report whose findings were judged.
   final OkfReport report;

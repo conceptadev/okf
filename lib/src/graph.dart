@@ -1,8 +1,11 @@
+import 'package:ack/ack.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:path/path.dart' as p;
 
+import 'ack_error.dart';
 import 'bundle.dart';
 import 'concept_id.dart';
+import 'control_characters.dart';
 import 'link_path.dart';
 
 /// Current schema version emitted by [OkfGraph.toJson].
@@ -11,11 +14,35 @@ const okfGraphJsonSchemaVersion = '1';
 const _graphQueryTypesField = 'types';
 const _graphQueryPathPrefixesField = 'path_prefixes';
 const _graphQueryResolutionsField = 'resolutions';
-const _graphQueryFields = <String>{
-  _graphQueryTypesField,
-  _graphQueryPathPrefixesField,
-  _graphQueryResolutionsField,
-};
+
+// One schema owns the JSON parser's constraints and the schema advertised by
+// MCP. The public query keeps its Set-based API and constructor semantics.
+final _graphQuerySchema =
+    Ack.object({
+      _graphQueryTypesField: Ack.list(
+        Ack.string().minLength(1),
+      ).unique().optional(),
+      _graphQueryPathPrefixesField: Ack.list(
+        Ack.string().minLength(1),
+      ).unique().optional(),
+      _graphQueryResolutionsField: Ack.list(
+        Ack.enumString(
+          OkfGraphResolution.values
+              .map((resolution) => resolution.wireValue)
+              .toList(),
+        ),
+      ).unique().optional(),
+    }).codec<OkfGraphQuery>(
+      decode: (data) => OkfGraphQuery(
+        conceptTypes: data[_graphQueryTypesField] as List<String>? ?? const [],
+        pathPrefixes:
+            data[_graphQueryPathPrefixesField] as List<String>? ?? const [],
+        resolutions:
+            (data[_graphQueryResolutionsField] as List<String>? ?? const [])
+                .map(OkfGraphResolution.fromWireValue),
+      ),
+      encode: (query) => query.toJson(),
+    );
 
 /// Where a graph relationship was discovered.
 enum OkfGraphEdgeOrigin {
@@ -66,52 +93,25 @@ final class OkfGraphQuery {
     Iterable<String> conceptTypes = const <String>[],
     Iterable<String> pathPrefixes = const <String>[],
     Iterable<OkfGraphResolution> resolutions = const <OkfGraphResolution>[],
-  })  : conceptTypes = _queryStringSet(conceptTypes, 'conceptTypes'),
-        pathPrefixes = _queryStringSet(pathPrefixes, 'pathPrefixes'),
-        resolutions = Set<OkfGraphResolution>.unmodifiable(resolutions);
+  }) : conceptTypes = _queryStringSet(conceptTypes, 'conceptTypes'),
+       pathPrefixes = _queryStringSet(pathPrefixes, 'pathPrefixes'),
+       resolutions = Set<OkfGraphResolution>.unmodifiable(resolutions);
 
   /// Parses a graph query from the shape described by [jsonSchema].
   factory OkfGraphQuery.fromJson(Map<String, Object?> json) {
-    for (final key in json.keys) {
-      if (!_graphQueryFields.contains(key)) {
-        throw FormatException('Unknown graph query field', key);
-      }
+    try {
+      return _graphQuerySchema.parse(json)!;
+    } on AckException catch (error) {
+      throw FormatException(
+        'Invalid graph query: ${formatAckErrors(error)}',
+        json,
+      );
     }
-    return OkfGraphQuery(
-      conceptTypes: _queryStrings(json, _graphQueryTypesField),
-      pathPrefixes: _queryStrings(json, _graphQueryPathPrefixesField),
-      resolutions: _queryStrings(json, _graphQueryResolutionsField)
-          .map(OkfGraphResolution.fromWireValue),
-    );
   }
 
   /// JSON Schema for adapters that accept graph queries as structured input.
-  static Map<String, Object?> get jsonSchema => <String, Object?>{
-        'type': 'object',
-        'properties': <String, Object?>{
-          _graphQueryTypesField: <String, Object?>{
-            'type': 'array',
-            'items': <String, Object?>{'type': 'string', 'minLength': 1},
-            'uniqueItems': true,
-          },
-          _graphQueryPathPrefixesField: <String, Object?>{
-            'type': 'array',
-            'items': <String, Object?>{'type': 'string', 'minLength': 1},
-            'uniqueItems': true,
-          },
-          _graphQueryResolutionsField: <String, Object?>{
-            'type': 'array',
-            'items': <String, Object?>{
-              'type': 'string',
-              'enum': OkfGraphResolution.values
-                  .map((resolution) => resolution.wireValue)
-                  .toList(growable: false),
-            },
-            'uniqueItems': true,
-          },
-        },
-        'additionalProperties': false,
-      };
+  static Map<String, Object?> get jsonSchema =>
+      _graphQuerySchema.toJsonSchema();
 
   bool get _isEmpty =>
       conceptTypes.isEmpty && pathPrefixes.isEmpty && resolutions.isEmpty;
@@ -128,12 +128,12 @@ final class OkfGraphQuery {
 
   /// Converts this query to the shape described by [jsonSchema].
   Map<String, Object?> toJson() => <String, Object?>{
-        _graphQueryTypesField: conceptTypes.toList(growable: false),
-        _graphQueryPathPrefixesField: pathPrefixes.toList(growable: false),
-        _graphQueryResolutionsField: resolutions
-            .map((resolution) => resolution.wireValue)
-            .toList(growable: false),
-      };
+    _graphQueryTypesField: conceptTypes.toList(growable: false),
+    _graphQueryPathPrefixesField: pathPrefixes.toList(growable: false),
+    _graphQueryResolutionsField: resolutions
+        .map((resolution) => resolution.wireValue)
+        .toList(growable: false),
+  };
 
   bool _matchesNode(OkfGraphNode node) =>
       (conceptTypes.isEmpty || conceptTypes.contains(node.type)) &&
@@ -141,24 +141,6 @@ final class OkfGraphQuery {
 
   bool _matchesEdge(OkfGraphEdge edge) =>
       resolutions.isEmpty || resolutions.contains(edge.resolution);
-}
-
-Iterable<String> _queryStrings(Map<String, Object?> json, String key) {
-  if (!json.containsKey(key)) {
-    return const <String>[];
-  }
-  final value = json[key];
-  if (value is! List<Object?> || value.any((item) => item is! String)) {
-    throw FormatException('Graph query field must be a string array', key);
-  }
-  final strings = value.cast<String>();
-  if (strings.any((item) => item.isEmpty)) {
-    throw FormatException('Graph query values must not be empty', key);
-  }
-  if (strings.toSet().length != strings.length) {
-    throw FormatException('Graph query values must be unique', key);
-  }
-  return strings;
 }
 
 Set<String> _queryStringSet(Iterable<String> values, String name) {
@@ -200,14 +182,14 @@ final class OkfGraphNode {
 
   /// Converts this node to a JSON-compatible object.
   Map<String, Object?> toJson() => <String, Object?>{
-        'id': id.value,
-        'path': id.documentPath,
-        'type': type,
-        'title': title,
-        'status': status,
-        'trust_tier': trustTier,
-        if (staleAfter != null) 'stale_after': staleAfter,
-      };
+    'id': id.value,
+    'path': id.documentPath,
+    'type': type,
+    'title': title,
+    'status': status,
+    'trust_tier': trustTier,
+    if (staleAfter != null) 'stale_after': staleAfter,
+  };
 }
 
 /// A directed relationship originating at an OKF concept.
@@ -242,13 +224,13 @@ final class OkfGraphEdge {
 
   /// Converts this edge to a JSON-compatible object.
   Map<String, Object?> toJson() => <String, Object?>{
-        'source': source.value,
-        'raw_target': rawTarget,
-        'origin': origin.wireValue,
-        'resolution': resolution.wireValue,
-        if (resolvedPath != null) 'resolved_path': resolvedPath,
-        if (targetConcept != null) 'target_concept': targetConcept!.value,
-      };
+    'source': source.value,
+    'raw_target': rawTarget,
+    'origin': origin.wireValue,
+    'resolution': resolution.wireValue,
+    if (resolvedPath != null) 'resolved_path': resolvedPath,
+    if (targetConcept != null) 'target_concept': targetConcept!.value,
+  };
 }
 
 /// A deterministic graph derived from concept links and path-valued fields.
@@ -256,14 +238,11 @@ final class OkfGraph {
   OkfGraph._({
     required List<OkfGraphNode> nodes,
     required List<OkfGraphEdge> edges,
-  })  : nodes = List<OkfGraphNode>.unmodifiable(nodes),
-        edges = List<OkfGraphEdge>.unmodifiable(edges);
+  }) : nodes = List<OkfGraphNode>.unmodifiable(nodes),
+       edges = List<OkfGraphEdge>.unmodifiable(edges);
 
   /// Builds a graph without rejecting broken or external references.
-  factory OkfGraph.fromBundle(
-    OkfBundle bundle, {
-    OkfGraphQuery? query,
-  }) {
+  factory OkfGraph.fromBundle(OkfBundle bundle, {OkfGraphQuery? query}) {
     final nodes = <OkfGraphNode>[];
     final edges = <OkfGraphEdge>[];
 
@@ -274,7 +253,8 @@ final class OkfGraph {
         OkfGraphNode(
           id: entry.key,
           type: _scalarString(document.frontmatter['type']) ?? '',
-          title: _scalarString(document.frontmatter['title']) ??
+          title:
+              _scalarString(document.frontmatter['title']) ??
               entry.key.basename,
           status: metadata.status.wireValue,
           trustTier: metadata.trustTier.wireValue,
@@ -336,7 +316,8 @@ final class OkfGraph {
     final uniqueEdges = <OkfGraphEdge>[];
     String? previousKey;
     for (final edge in edges) {
-      final key = '${edge.source.value}\u0000${edge.origin.wireValue}\u0000'
+      final key =
+          '${edge.source.value}\u0000${edge.origin.wireValue}\u0000'
           '${edge.rawTarget}\u0000${edge.resolution.wireValue}\u0000'
           '${edge.resolvedPath ?? ''}';
       if (key != previousKey) {
@@ -358,10 +339,7 @@ final class OkfGraph {
               nodeIds.contains(edge.targetConcept)) &&
           query._matchesEdge(edge),
     );
-    return OkfGraph._(
-      nodes: filteredNodes,
-      edges: filteredEdges.toList(),
-    );
+    return OkfGraph._(nodes: filteredNodes, edges: filteredEdges.toList());
   }
 
   /// Concept nodes sorted by ID.
@@ -372,10 +350,10 @@ final class OkfGraph {
 
   /// Converts this graph to a JSON-compatible object.
   Map<String, Object?> toJson() => <String, Object?>{
-        'schema_version': okfGraphJsonSchemaVersion,
-        'nodes': nodes.map((node) => node.toJson()).toList(growable: false),
-        'edges': edges.map((edge) => edge.toJson()).toList(growable: false),
-      };
+    'schema_version': okfGraphJsonSchemaVersion,
+    'nodes': nodes.map((node) => node.toJson()).toList(growable: false),
+    'edges': edges.map((edge) => edge.toJson()).toList(growable: false),
+  };
 
   /// Renders this graph in Graphviz DOT format.
   String toDot() {
@@ -434,9 +412,7 @@ final class OkfGraph {
       if (!emittedVirtualIds.add(entry.value)) {
         continue;
       }
-      lines.add(
-        '  ${entry.value}["${_mermaid(entry.key.rawTarget)}"]',
-      );
+      lines.add('  ${entry.value}["${_mermaid(entry.key.rawTarget)}"]');
     }
     for (final edge in edges) {
       final target = edge.targetConcept == null
@@ -461,11 +437,13 @@ final class OkfGraph {
       if (edge.targetConcept != null) {
         continue;
       }
-      final key = '${edge.rawTarget}\u0000${edge.resolution.wireValue}\u0000'
+      final key =
+          '${edge.rawTarget}\u0000${edge.resolution.wireValue}\u0000'
           '${edge.resolvedPath ?? ''}';
       var id = idsByTarget[key];
       if (id == null) {
-        id = idValue?.call(index) ??
+        id =
+            idValue?.call(index) ??
             '$prefix${edge.resolution.wireValue}:$index';
         idsByTarget[key] = id;
         index++;
@@ -528,7 +506,7 @@ final class _LinkCollector implements md.NodeVisitor {
       final href = element.attributes['href'];
       final isGeneratedFootnoteLink =
           (element.attributes['id']?.startsWith('fnref-') ?? false) ||
-              element.attributes['class'] == 'footnote-backref';
+          element.attributes['class'] == 'footnote-backref';
       if (href != null && !isGeneratedFootnoteLink) {
         links.add(href);
       }
@@ -574,7 +552,7 @@ _ResolvedTarget _resolveTarget(
   final resolved = absolute
       ? <String>[]
       : <String>[
-          if (source.directory.isNotEmpty) ...source.directory.split('/')
+          if (source.directory.isNotEmpty) ...source.directory.split('/'),
         ];
   for (final rawSegment in rawSegments) {
     if (rawSegment.isEmpty || rawSegment == '.') {
@@ -586,7 +564,7 @@ _ResolvedTarget _resolveTarget(
     }
     if (segment.contains('/') ||
         segment.contains(r'\') ||
-        segment.runes.any((rune) => rune < 0x20 || rune == 0x7f)) {
+        segment.runes.any(isControlCharacter)) {
       return const _ResolvedTarget(OkfGraphResolution.invalid);
     }
     if (segment == '..') {
@@ -604,10 +582,7 @@ _ResolvedTarget _resolveTarget(
 
   final normalized = resolved.join('/');
   if (!bundle.containsPath(normalized)) {
-    return _ResolvedTarget(
-      OkfGraphResolution.unresolved,
-      path: normalized,
-    );
+    return _ResolvedTarget(OkfGraphResolution.unresolved, path: normalized);
   }
 
   try {
@@ -622,10 +597,7 @@ _ResolvedTarget _resolveTarget(
   } on FormatException {
     // A present reserved document or asset is a resolved non-concept target.
   }
-  return _ResolvedTarget(
-    OkfGraphResolution.resolvedAsset,
-    path: normalized,
-  );
+  return _ResolvedTarget(OkfGraphResolution.resolvedAsset, path: normalized);
 }
 
 /// Whether [pathPart] (a target already stripped of query and fragment)
@@ -681,10 +653,9 @@ int _compareEdges(OkfGraphEdge left, OkfGraphEdge right) {
   return left.resolution.index.compareTo(right.resolution.index);
 }
 
-String _dot(String value) => _visibleControlCharacters(value)
-    .replaceAll(r'\', r'\\')
-    .replaceAll('"', r'\"')
-    .replaceAll('\n', r'\n');
+String _dot(String value) => _visibleControlCharacters(
+  value,
+).replaceAll(r'\', r'\\').replaceAll('"', r'\"').replaceAll('\n', r'\n');
 
 String _mermaid(String value) => _visibleControlCharacters(value)
     .replaceAll('&', '&amp;')
@@ -700,7 +671,7 @@ String _visibleControlCharacters(String value) {
   for (final rune in value.runes) {
     if (rune == 0x0a) {
       output.write('\n');
-    } else if (rune < 0x20 || rune >= 0x7f && rune <= 0x9f) {
+    } else if (isControlCharacter(rune)) {
       output
         ..write(r'\u{')
         ..write(rune.toRadixString(16).padLeft(4, '0'))

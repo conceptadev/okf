@@ -13,7 +13,7 @@ import 'bundle_lock.dart';
 /// The outcome of writing or checking a set of bundle files.
 final class OkfWriteResult {
   OkfWriteResult(Iterable<String> changedPaths)
-      : changedPaths = List<String>.unmodifiable(changedPaths);
+    : changedPaths = List<String>.unmodifiable(changedPaths);
 
   /// Paths whose desired content differed from the filesystem.
   final List<String> changedPaths;
@@ -61,12 +61,9 @@ final class OkfBundleWriter {
     String relativePath,
     OkfDocument document, {
     bool checkOnly = false,
-  }) =>
-      writeAll(
-        rootPath,
-        <String, String>{relativePath: document.serialize()},
-        checkOnly: checkOnly,
-      );
+  }) => writeAll(rootPath, <String, String>{
+    relativePath: document.serialize(),
+  }, checkOnly: checkOnly);
 
   /// Writes all [files], keyed by bundle-relative path.
   ///
@@ -114,11 +111,12 @@ final class OkfBundleWriter {
 
     try {
       for (final entry in normalizedFiles.entries) {
-        final destination = _destination(root, entry.key);
+        final destination = File(_destinationPath(root, entry.key));
         await _rejectLinks(root, entry.key);
         final desiredBytes = utf8.encode(entry.value);
-        final currentBytes =
-            await destination.exists() ? await destination.readAsBytes() : null;
+        final currentBytes = await destination.exists()
+            ? await destination.readAsBytes()
+            : null;
         if (_bytesEqual(currentBytes, desiredBytes)) {
           continue;
         }
@@ -191,8 +189,9 @@ final class OkfBundleWriter {
       await _rejectLinks(root, entry.key);
 
       final desiredBytes = utf8.encode(entry.value);
-      final currentBytes =
-          await destination.exists() ? await destination.readAsBytes() : null;
+      final currentBytes = await destination.exists()
+          ? await destination.readAsBytes()
+          : null;
       final expected = expectedSources[entry.key];
       if (expected != null &&
           !_bytesEqual(currentBytes, utf8.encode(expected))) {
@@ -225,9 +224,10 @@ final class OkfBundleWriter {
 
     for (final path in paths) {
       await _rejectLinks(root, path);
-      final destination = _destination(root, path);
-      files[path] =
-          await destination.exists() ? await destination.readAsBytes() : null;
+      final destination = File(_destinationPath(root, path));
+      files[path] = await destination.exists()
+          ? await destination.readAsBytes()
+          : null;
 
       var directory = p.posix.dirname(path);
       while (directory != '.') {
@@ -243,22 +243,16 @@ final class OkfBundleWriter {
       }
     }
 
-    return _CapturedFiles(
-      files: files,
-      absentDirectories: absentDirectories,
-    );
+    return _CapturedFiles(files: files, absentDirectories: absentDirectories);
   }
 
-  Future<List<Object>> _restore(
-    Directory root,
-    _CapturedFiles captured,
-  ) async {
+  Future<List<Object>> _restore(Directory root, _CapturedFiles captured) async {
     final errors = <Object>[];
 
     for (final entry in captured.files.entries.toList().reversed) {
       try {
         await _rejectLinks(root, entry.key);
-        final destination = _destination(root, entry.key);
+        final destination = File(_destinationPath(root, entry.key));
         final original = entry.value;
         if (original == null) {
           if (await destination.exists()) {
@@ -325,10 +319,7 @@ final class OkfBundleWriter {
     }
 
     final root = Directory(p.normalize(p.absolute(rootPath)));
-    final type = await FileSystemEntity.type(
-      root.path,
-      followLinks: false,
-    );
+    final type = await FileSystemEntity.type(root.path, followLinks: false);
     if (type == FileSystemEntityType.link) {
       throw FileSystemException(
         'Bundle root must not be a symbolic link',
@@ -340,10 +331,7 @@ final class OkfBundleWriter {
         await root.create(recursive: true);
       }
     } else if (type != FileSystemEntityType.directory) {
-      throw FileSystemException(
-        'Bundle root is not a directory',
-        root.path,
-      );
+      throw FileSystemException('Bundle root is not a directory', root.path);
     }
     return root;
   }
@@ -352,10 +340,7 @@ final class OkfBundleWriter {
     var currentPath = root.path;
     for (final segment in p.posix.split(relativePath)) {
       currentPath = p.join(currentPath, segment);
-      final type = await FileSystemEntity.type(
-        currentPath,
-        followLinks: false,
-      );
+      final type = await FileSystemEntity.type(currentPath, followLinks: false);
       if (type == FileSystemEntityType.link) {
         throw FileSystemException(
           'Refusing to write through a symbolic link',
@@ -427,9 +412,7 @@ final class OkfBundleWriter {
       }
     }
 
-    final backup = File(
-      '${destination.path}.okf-${pid.toRadixString(16)}.bak',
-    );
+    final backup = File('${destination.path}.okf-${pid.toRadixString(16)}.bak');
     if (await backup.exists()) {
       throw FileSystemException(
         'Could not allocate a replacement backup',
@@ -474,18 +457,12 @@ Future<void> _createRoot(String rootPath) async {
 final class OkfBundleWriteTransaction {
   const OkfBundleWriteTransaction();
 
-  Future<OkfWriteResult> writeAll(
-    String rootPath,
-    Map<String, String> files,
-  ) =>
+  Future<OkfWriteResult> writeAll(String rootPath, Map<String, String> files) =>
       const OkfBundleWriter()._writeAllTransactionally(rootPath, files);
 }
 
 final class _CapturedFiles {
-  const _CapturedFiles({
-    required this.files,
-    required this.absentDirectories,
-  });
+  const _CapturedFiles({required this.files, required this.absentDirectories});
 
   final Map<String, List<int>?> files;
   final Set<String> absentDirectories;
@@ -503,9 +480,6 @@ final class _StagedFile {
   final File temporary;
 }
 
-File _destination(Directory root, String relativePath) =>
-    File(_destinationPath(root, relativePath));
-
 String _destinationPath(Directory root, String relativePath) =>
     p.joinAll(<String>[root.path, ...p.posix.split(relativePath)]);
 
@@ -522,11 +496,7 @@ String _validateRelativePath(String value) {
   try {
     return validateBundlePath(value);
   } on FormatException catch (error) {
-    throw ArgumentError.value(
-      value,
-      'relativePath',
-      error.message,
-    );
+    throw ArgumentError.value(value, 'relativePath', error.message);
   }
 }
 

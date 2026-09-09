@@ -29,12 +29,11 @@ Future<int> runOkfCli(
   String? workingDirectory,
   OkfCliOutput? out,
   OkfCliOutput? err,
-}) =>
-    OkfCli(
-      workingDirectory: workingDirectory,
-      out: out,
-      err: err,
-    ).run(arguments);
+}) => OkfCli(
+  workingDirectory: workingDirectory,
+  out: out,
+  err: err,
+).run(arguments);
 
 /// The embeddable implementation of the `okf` executable.
 final class OkfCli {
@@ -45,14 +44,14 @@ final class OkfCli {
     OkfCliOutput? err,
     OkfBundleLoader loader = const OkfBundleLoader(),
     OkfBundleWriter writer = const OkfBundleWriter(),
-  })  : workingDirectory = p.normalize(
-          p.absolute(workingDirectory ?? Directory.current.path),
-        ),
-        _out = out ?? stdout.writeln,
-        _err = err ?? stderr.writeln,
-        _loader = loader,
-        _writer = writer,
-        _parser = _buildParser();
+  }) : workingDirectory = p.normalize(
+         p.absolute(workingDirectory ?? Directory.current.path),
+       ),
+       _out = out ?? stdout.writeln,
+       _err = err ?? stderr.writeln,
+       _loader = loader,
+       _writer = writer,
+       _parser = _buildParser();
 
   /// The absolute directory used to resolve command operands.
   final String workingDirectory;
@@ -91,26 +90,24 @@ final class OkfCli {
         'index' => await _index(command),
         'graph' => await _graph(command),
         'mcp' => await _mcp(command),
-        _ => throw _OkfUsageException(
-            'Unknown command: ${command.name ?? ''}',
-          ),
+        _ => throw _OkfUsageException('Unknown command: ${command.name ?? ''}'),
       };
     } on ArgParserException catch (error) {
-      _err('okf: ${_terminalSafe(error.message)}');
+      _err('okf: ${escapeControlCharacters(error.message)}');
       _err('Run "okf --help" for usage.');
       return OkfExitCode.usage.value;
     } on _OkfUsageException catch (error) {
-      _err('okf: ${_terminalSafe(error.message)}');
+      _err('okf: ${escapeControlCharacters(error.message)}');
       _err('Run "okf --help" for usage.');
       return OkfExitCode.usage.value;
     } on FileSystemException catch (error) {
       _err('okf: ${_fileSystemMessage(error)}');
       return OkfExitCode.usage.value;
     } on ArgumentError catch (error) {
-      _err('okf: ${_terminalSafe('${error.message ?? error}')}');
+      _err('okf: ${escapeControlCharacters('${error.message ?? error}')}');
       return OkfExitCode.usage.value;
     } on Exception catch (error) {
-      _err('okf: ${_terminalSafe('$error')}');
+      _err('okf: ${escapeControlCharacters('$error')}');
       return OkfExitCode.usage.value;
     }
   }
@@ -122,15 +119,11 @@ final class OkfCli {
     final verdict = OkfVerdict.of(report, strict: command.flag('strict'));
 
     if (command.option('output') == 'json') {
-      _out(
-        const JsonEncoder.withIndent('  ').convert(report.toJson()),
-      );
+      _out(const JsonEncoder.withIndent('  ').convert(report.toJson()));
     } else {
       _emitReport(report);
       if (report.findings.isEmpty) {
-        _out(
-          'OK: ${result.bundle.concepts.length} concept(s) validated.',
-        );
+        _out('OK: ${result.bundle.concepts.length} concept(s) validated.');
       }
     }
     return verdict.exitCode;
@@ -139,10 +132,7 @@ final class OkfCli {
   Future<int> _format(ArgResults command) async {
     final targetOperand = _singleOperand(command);
     final targetPath = _resolve(targetOperand);
-    final type = await FileSystemEntity.type(
-      targetPath,
-      followLinks: false,
-    );
+    final type = await FileSystemEntity.type(targetPath, followLinks: false);
     if (type == FileSystemEntityType.link) {
       throw FileSystemException(
         'Refusing to format a symbolic link',
@@ -152,8 +142,9 @@ final class OkfCli {
 
     // A file operand can identify its directory, but not an enclosing bundle.
     // `_formatLocked` also uses a source precondition for that case.
-    final rootPath =
-        type == FileSystemEntityType.file ? p.dirname(targetPath) : targetPath;
+    final rootPath = type == FileSystemEntityType.file
+        ? p.dirname(targetPath)
+        : targetPath;
     Future<_CliCommandResult> formatLocked() =>
         _formatLocked(command, targetPath, rootPath, type);
     if (command.flag('check')) {
@@ -199,20 +190,10 @@ final class OkfCli {
         desired[entry.key] = entry.value.serialize();
       }
       for (final entry in loaded.indexes.entries) {
-        _addFormattedSource(
-          entry.value,
-          entry.key,
-          desired,
-          findings,
-        );
+        _addFormattedSource(entry.value, entry.key, desired, findings);
       }
       for (final entry in loaded.logs.entries) {
-        _addFormattedSource(
-          entry.value,
-          entry.key,
-          desired,
-          findings,
-        );
+        _addFormattedSource(entry.value, entry.key, desired, findings);
       }
     } else {
       throw FileSystemException('Path does not exist', targetPath);
@@ -242,15 +223,13 @@ final class OkfCli {
     }
 
     if (writeResult.hasChanges) {
-      return _CliCommandResult(
-        OkfExitCode.success.value,
-        <String>['Formatted ${writeResult.changedPaths.length} file(s).'],
-      );
+      return _CliCommandResult(OkfExitCode.success.value, <String>[
+        'Formatted ${writeResult.changedPaths.length} file(s).',
+      ]);
     }
-    return _CliCommandResult(
-      OkfExitCode.success.value,
-      const <String>['Already formatted.'],
-    );
+    return _CliCommandResult(OkfExitCode.success.value, const <String>[
+      'Already formatted.',
+    ]);
   }
 
   Future<int> _index(ArgResults command) async {
@@ -277,14 +256,16 @@ final class OkfCli {
     );
     // Load failures always block; validation only blocks on errors outside
     // the files index generation owns (generated indexes) or ignores (logs).
-    final report = OkfReport(findings: <OkfFinding>[
-      ...loaded.report.findings,
-      ...const OkfSpecValidator()
-          .validate(loaded.bundle)
-          .report
-          .findings
-          .where((finding) => _blocksIndexGeneration(finding, generated)),
-    ]);
+    final report = OkfReport(
+      findings: <OkfFinding>[
+        ...loaded.report.findings,
+        ...const OkfSpecValidator()
+            .validate(loaded.bundle)
+            .report
+            .findings
+            .where((finding) => _blocksIndexGeneration(finding, generated)),
+      ],
+    );
     if (report.findings.isNotEmpty) {
       return _CliCommandResult(
         OkfVerdict.of(report).exitCode,
@@ -307,17 +288,13 @@ final class OkfCli {
     }
 
     if (writeResult.hasChanges) {
-      return _CliCommandResult(
-        OkfExitCode.success.value,
-        <String>[
-          'Generated ${writeResult.changedPaths.length} index file(s).',
-        ],
-      );
+      return _CliCommandResult(OkfExitCode.success.value, <String>[
+        'Generated ${writeResult.changedPaths.length} index file(s).',
+      ]);
     }
-    return _CliCommandResult(
-      OkfExitCode.success.value,
-      const <String>['Indexes are current.'],
-    );
+    return _CliCommandResult(OkfExitCode.success.value, const <String>[
+      'Indexes are current.',
+    ]);
   }
 
   Future<int> _graph(ArgResults command) async {
@@ -328,8 +305,9 @@ final class OkfCli {
       return OkfVerdict.of(loaded.report).exitCode;
     }
 
-    final resolutions =
-        command.multiOption('resolution').map(OkfGraphResolution.fromWireValue);
+    final resolutions = command
+        .multiOption('resolution')
+        .map(OkfGraphResolution.fromWireValue);
     final graph = OkfGraph.fromBundle(
       loaded.bundle,
       query: OkfGraphQuery(
@@ -344,16 +322,14 @@ final class OkfCli {
       'mermaid' => graph.toMermaid(),
       _ => throw StateError('Unsupported graph output format'),
     };
-    _out(output.endsWith('\n')
-        ? output.substring(0, output.length - 1)
-        : output);
+    _out(
+      output.endsWith('\n') ? output.substring(0, output.length - 1) : output,
+    );
     return OkfExitCode.success.value;
   }
 
   Future<int> _mcp(ArgResults command) async {
-    await OkfMcpServer(
-      rootPath: _resolve(_singleOperand(command)),
-    ).serve();
+    await OkfMcpServer(rootPath: _resolve(_singleOperand(command))).serve();
     return OkfExitCode.success.value;
   }
 
@@ -386,10 +362,11 @@ final class OkfCli {
   }
 
   String _resolve(String operand) => p.normalize(
-        p.isAbsolute(operand) ? operand : p.join(workingDirectory, operand),
-      );
+    p.isAbsolute(operand) ? operand : p.join(workingDirectory, operand),
+  );
 
-  String _rootUsage() => '''
+  String _rootUsage() =>
+      '''
 Open Knowledge Format toolkit
 
 Usage: okf <command> [arguments]
@@ -418,27 +395,13 @@ Run "okf <command> --help" for command-specific usage.''';
 
 ArgParser _buildParser() {
   final parser = ArgParser()
-    ..addFlag(
-      'help',
-      abbr: 'h',
-      negatable: false,
-      help: 'Show this help.',
-    )
-    ..addFlag(
-      'version',
-      negatable: false,
-      help: 'Show the package version.',
-    );
+    ..addFlag('help', abbr: 'h', negatable: false, help: 'Show this help.')
+    ..addFlag('version', negatable: false, help: 'Show the package version.');
 
   parser.addCommand(
     'validate',
     ArgParser()
-      ..addFlag(
-        'help',
-        abbr: 'h',
-        negatable: false,
-        help: 'Show command help.',
-      )
+      ..addFlag('help', abbr: 'h', negatable: false, help: 'Show command help.')
       ..addOption(
         'output',
         allowed: const <String>['text', 'json'],
@@ -455,12 +418,7 @@ ArgParser _buildParser() {
   parser.addCommand(
     'format',
     ArgParser()
-      ..addFlag(
-        'help',
-        abbr: 'h',
-        negatable: false,
-        help: 'Show command help.',
-      )
+      ..addFlag('help', abbr: 'h', negatable: false, help: 'Show command help.')
       ..addFlag(
         'check',
         negatable: false,
@@ -470,12 +428,7 @@ ArgParser _buildParser() {
   parser.addCommand(
     'index',
     ArgParser()
-      ..addFlag(
-        'help',
-        abbr: 'h',
-        negatable: false,
-        help: 'Show command help.',
-      )
+      ..addFlag('help', abbr: 'h', negatable: false, help: 'Show command help.')
       ..addFlag(
         'check',
         negatable: false,
@@ -490,12 +443,7 @@ ArgParser _buildParser() {
   parser.addCommand(
     'graph',
     ArgParser()
-      ..addFlag(
-        'help',
-        abbr: 'h',
-        negatable: false,
-        help: 'Show command help.',
-      )
+      ..addFlag('help', abbr: 'h', negatable: false, help: 'Show command help.')
       ..addOption(
         'output',
         allowed: const <String>['json', 'dot', 'mermaid'],
@@ -525,21 +473,17 @@ ArgParser _buildParser() {
   );
   parser.addCommand(
     'mcp',
-    ArgParser()
-      ..addFlag(
-        'help',
-        abbr: 'h',
-        negatable: false,
-        help: 'Show command help.',
-      ),
+    ArgParser()..addFlag(
+      'help',
+      abbr: 'h',
+      negatable: false,
+      help: 'Show command help.',
+    ),
   );
   return parser;
 }
 
-bool _blocksIndexGeneration(
-  OkfFinding finding,
-  Map<String, String> generated,
-) {
+bool _blocksIndexGeneration(OkfFinding finding, Map<String, String> generated) {
   if (finding.severity != OkfFindingSeverity.error) {
     return false;
   }
@@ -559,7 +503,7 @@ final class _OkfUsageException implements Exception {
 
 final class _CliCommandResult {
   _CliCommandResult(this.exitCode, Iterable<String> output)
-      : output = List<String>.unmodifiable(output);
+    : output = List<String>.unmodifiable(output);
 
   final int exitCode;
   final List<String> output;
@@ -567,9 +511,8 @@ final class _CliCommandResult {
 
 String _fileSystemMessage(FileSystemException error) {
   final path = error.path;
-  final message =
-      path == null || path.isEmpty ? error.message : '${error.message}: $path';
-  return _terminalSafe(message);
+  final message = path == null || path.isEmpty
+      ? error.message
+      : '${error.message}: $path';
+  return escapeControlCharacters(message);
 }
-
-String _terminalSafe(String value) => escapeControlCharacters(value);

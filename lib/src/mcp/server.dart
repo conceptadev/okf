@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:ack/ack.dart' as ack;
 import 'package:mcp_dart/mcp_dart.dart';
 
+import '../ack_error.dart';
 import '../bundle.dart';
 import '../bundle_change_set.dart';
 import '../concept_id.dart';
@@ -13,6 +15,7 @@ import '../graph.dart';
 import '../io/bundle_change_applier.dart';
 import '../io/bundle_loader.dart';
 import '../version.dart';
+import 'inputs.dart';
 
 /// The OKF tool surface served over the Model Context Protocol.
 ///
@@ -26,8 +29,8 @@ final class OkfMcpServer {
   OkfMcpServer({
     required this.rootPath,
     OkfBundleLoader loader = const OkfBundleLoader(),
-  })  : _loader = loader,
-        _applier = const OkfBundleChangeApplier();
+  }) : _loader = loader,
+       _applier = const OkfBundleChangeApplier();
 
   /// The bundle root every tool reads.
   final String rootPath;
@@ -77,49 +80,29 @@ final class OkfMcpServer {
   void _registerReadTools(McpServer server) {
     server.registerTool(
       'list-concepts',
-      description: 'List concepts with their metadata, optionally narrowed '
+      description:
+          'List concepts with their metadata, optionally narrowed '
           'by bundle area, concept type, or a text query.',
-      inputSchema: JsonSchema.object(
-        properties: <String, JsonSchema>{
-          'prefix': JsonSchema.string(
-            minLength: 1,
-            description: 'Bundle area to list: a concept whose ID is the '
-                'prefix or lives under it as a directory matches.',
-          ),
-          'type': JsonSchema.string(
-            minLength: 1,
-            description: 'Exact concept type to keep, spelled as the bundle '
-                'spells it; an empty result reports the types the bundle '
-                'actually holds.',
-          ),
-          'query': JsonSchema.string(
-            minLength: 1,
-            description: 'Case-insensitive substring matched against each '
-                'concept ID and title.',
-          ),
-        },
-        additionalProperties: false,
+      inputSchema: JsonObject.fromJson(
+        ListConceptsInput.$ack.schema.toJsonSchema(),
       ),
       annotations: _readOnlyAnnotations,
-      callback: (arguments, extra) => _readComplete((loaded) => _payload(
-            _conceptListing(
-              loaded.bundle,
-              _ConceptFilter.fromArguments(arguments),
-            ),
-          )),
+      callback: (arguments, extra) => _readComplete(
+        (loaded) => _payload(
+          _conceptListing(loaded.bundle, ListConceptsInput.parse(arguments)),
+        ),
+      ),
     );
 
     server.registerTool(
       'lookup-concept',
       description: 'Read one concept in its canonical Markdown form.',
-      inputSchema: JsonSchema.object(
-        properties: <String, JsonSchema>{'id': _conceptIdSchema},
-        required: const <String>['id'],
-        additionalProperties: false,
+      inputSchema: JsonObject.fromJson(
+        LookupConceptInput.$ack.schema.toJsonSchema(),
       ),
       annotations: _readOnlyAnnotations,
       callback: (arguments, extra) => _readComplete((loaded) {
-        final id = OkfConceptId(arguments['id']! as String);
+        final id = LookupConceptInput.parse(arguments).id;
         final document = loaded.bundle.concept(id);
         if (document == null) {
           throw FormatException('Unknown concept: ${id.value}');
@@ -149,19 +132,14 @@ final class OkfMcpServer {
     server.registerTool(
       'validate',
       description: 'Validate the bundle and judge it as the CI gate does.',
-      inputSchema: JsonSchema.object(
-        properties: <String, JsonSchema>{
-          'strict': JsonSchema.boolean(
-            description: 'Fail on advisories, as `--warnings-as-errors` does.',
-          ),
-        },
-        additionalProperties: false,
+      inputSchema: JsonObject.fromJson(
+        ValidateInput.$ack.schema.toJsonSchema(),
       ),
       annotations: _readOnlyAnnotations,
       callback: (arguments, extra) => _readInspection((loaded) {
         final verdict = OkfVerdict.of(
           loaded.validate().report,
-          strict: arguments['strict'] as bool? ?? false,
+          strict: ValidateInput.parse(arguments).strict ?? false,
         );
         return _payload(<String, Object?>{
           'report': verdict.report.toJson(),
@@ -177,15 +155,19 @@ final class OkfMcpServer {
       server,
       'create-concept',
       'Create a concept, maintaining the index and log with it.',
-      properties: _conceptWriteProperties,
-      requiredProperties: const <String>['id', 'type'],
+      input: CreateConceptInput.$ack,
       destructive: false,
       idempotent: false,
-      describe: (arguments) => OkfCreateConceptChange(
-        id: OkfConceptId(arguments['id']! as String),
+      describe: (input) => OkfCreateConceptChange(
+        id: input.id,
         document: OkfDocument(
-          frontmatter: _managedFrontmatter(arguments),
-          body: arguments['body'] as String? ?? '',
+          frontmatter: <String, Object?>{
+            'type': input.type,
+            'title': ?input.title,
+            'description': ?input.description,
+            'tags': ?input.tags,
+          },
+          body: input.body ?? '',
         ),
       ),
     );
@@ -194,22 +176,25 @@ final class OkfMcpServer {
       server,
       'update-concept',
       'Update the managed fields of an existing concept.',
-      properties: _conceptWriteProperties,
-      requiredProperties: const <String>['id'],
+      input: UpdateConceptInput.$ack,
       destructive: true,
       idempotent: true,
-      describe: (arguments) {
-        final frontmatter = _managedFrontmatter(arguments);
-        final body = arguments['body'] as String?;
-        if (frontmatter.isEmpty && body == null) {
+      describe: (input) {
+        final frontmatter = <String, Object?>{
+          'type': ?input.type,
+          'title': ?input.title,
+          'description': ?input.description,
+          'tags': ?input.tags,
+        };
+        if (frontmatter.isEmpty && input.body == null) {
           throw OkfBundleChangeException(
-            'Update for ${arguments['id']} does not change a managed field.',
+            'Update for ${input.id} does not change a managed field.',
           );
         }
         return OkfUpdateConceptChange(
-          id: OkfConceptId(arguments['id']! as String),
+          id: input.id,
           frontmatterChanges: frontmatter,
-          body: body,
+          body: input.body,
         );
       },
     );
@@ -218,26 +203,13 @@ final class OkfMcpServer {
       server,
       'link-concepts',
       'Relate two concepts, recording the link on the source.',
-      properties: <String, JsonSchema>{
-        'source': _conceptIdSchema,
-        'target': _conceptIdSchema,
-        'relationship': JsonSchema.string(
-          minLength: 1,
-          pattern: r'\S',
-          description: 'Producer-defined relationship type.',
-        ),
-      },
-      requiredProperties: const <String>[
-        'source',
-        'target',
-        'relationship',
-      ],
+      input: LinkConceptsInput.$ack,
       destructive: false,
       idempotent: true,
-      describe: (arguments) => OkfLinkConceptsChange(
-        source: OkfConceptId(arguments['source']! as String),
-        target: OkfConceptId(arguments['target']! as String),
-        relationship: arguments['relationship']! as String,
+      describe: (input) => OkfLinkConceptsChange(
+        source: input.source,
+        target: input.target,
+        relationship: input.relationship,
       ),
     );
 
@@ -245,19 +217,11 @@ final class OkfMcpServer {
       server,
       'deprecate-concept',
       'Retire a concept, recording why in the log.',
-      properties: <String, JsonSchema>{
-        'id': _conceptIdSchema,
-        'note': JsonSchema.string(
-          description: 'Context recorded with the lifecycle change.',
-        ),
-      },
-      requiredProperties: const <String>['id'],
+      input: DeprecateConceptInput.$ack,
       destructive: true,
       idempotent: true,
-      describe: (arguments) => OkfDeprecateConceptChange(
-        id: OkfConceptId(arguments['id']! as String),
-        note: arguments['note'] as String?,
-      ),
+      describe: (input) =>
+          OkfDeprecateConceptChange(id: input.id, note: input.note),
     );
   }
 
@@ -267,50 +231,43 @@ final class OkfMcpServer {
   /// Declaring every write verb through here keeps what they share from
   /// drifting apart: a closed schema is what decides the malformed-input
   /// tier, so it is not a per-verb choice.
-  void _registerWrite(
+  void _registerWrite<T extends Object>(
     McpServer server,
     String name,
     String description, {
-    required Map<String, JsonSchema> properties,
-    required List<String> requiredProperties,
+    required ack.AckModelAdapter<ack.JsonMap, ack.JsonMap, T> input,
     required bool destructive,
     required bool idempotent,
-    required OkfBundleChange Function(Map<String, Object?> arguments) describe,
-  }) =>
-      server.registerTool(
-        name,
-        description: description,
-        inputSchema: JsonSchema.object(
-          properties: properties,
-          required: requiredProperties,
-          additionalProperties: false,
-        ),
-        annotations: ToolAnnotations(
-          readOnlyHint: false,
-          destructiveHint: destructive,
-          idempotentHint: idempotent,
-          openWorldHint: false,
-        ),
-        callback: (arguments, extra) => _write(() => describe(arguments)),
-      );
+    required OkfBundleChange Function(T input) describe,
+  }) => server.registerTool(
+    name,
+    description: description,
+    inputSchema: JsonObject.fromJson(input.schema.toJsonSchema()),
+    annotations: ToolAnnotations(
+      readOnlyHint: false,
+      destructiveHint: destructive,
+      idempotentHint: idempotent,
+      openWorldHint: false,
+    ),
+    callback: (arguments, extra) =>
+        _write(() => describe(input.parse(arguments))),
+  );
 
   Future<CallToolResult> _readComplete(
     CallToolResult Function(OkfBundleLoadResult) answer,
-  ) =>
-      _readInspection((loaded) {
-        if (loaded.hasFindings) {
-          return _error(
-            'The bundle has files that could not be read.',
-            report: loaded.report,
-          );
-        }
-        return answer(loaded);
-      });
+  ) => _readInspection((loaded) {
+    if (loaded.hasFindings) {
+      return _error(
+        'The bundle has files that could not be read.',
+        report: loaded.report,
+      );
+    }
+    return answer(loaded);
+  });
 
   Future<CallToolResult> _readInspection(
     CallToolResult Function(OkfBundleLoadResult) answer,
-  ) =>
-      _guard(() async => answer(await _loader.inspect(rootPath)));
+  ) => _guard(() async => answer(await _loader.inspect(rootPath)));
 
   /// Prepares and commits the change returned by [describe].
   ///
@@ -327,13 +284,13 @@ final class OkfMcpServer {
           OkfBundleChangeSet(<OkfBundleChange>[describe()]),
         );
         return switch (application) {
-          OkfBundleApplied(result: final result) => _payload(
-              <String, Object?>{'changed_paths': result.changedPaths},
-            ),
+          OkfBundleApplied(result: final result) => _payload(<String, Object?>{
+            'changed_paths': result.changedPaths,
+          }),
           OkfBundleApplicationRefused(validation: final validation) => _error(
-              'The change was refused; the bundle is unchanged.',
-              report: validation.report,
-            ),
+            'The change was refused; the bundle is unchanged.',
+            report: validation.report,
+          ),
         };
       });
 
@@ -353,6 +310,8 @@ final class OkfMcpServer {
       return _error(error.message);
     } on FormatException catch (error) {
       return _error(error.message);
+    } on ack.AckException catch (error) {
+      return _error('Invalid tool arguments: ${formatAckErrors(error)}');
     } on Exception catch (error) {
       return _error('$error');
     }
@@ -366,96 +325,31 @@ const ToolAnnotations _readOnlyAnnotations = ToolAnnotations(
   openWorldHint: false,
 );
 
-/// The argument every tool that names a single concept takes, declared once so
-/// the read and write verbs cannot describe the same ID differently.
-final JsonSchema _conceptIdSchema = JsonSchema.string(
-  minLength: 1,
-  description: 'Bundle-relative concept ID, without the .md suffix.',
-);
-
-/// The parameters the create and update verbs take.
-///
-/// Beyond the `id` that addresses the concept, these are the fields those
-/// verbs manage; everything else a document carries belongs to whoever
-/// wrote it.
-final Map<String, JsonSchema> _conceptWriteProperties = <String, JsonSchema>{
-  'id': _conceptIdSchema,
-  'type': JsonSchema.string(
-    minLength: 1,
-    description: 'OKF concept type, such as Reference, Metric, or Note.',
-  ),
-  'title': JsonSchema.string(minLength: 1, description: 'Display name.'),
-  'description': JsonSchema.string(description: 'One-line summary.'),
-  'tags': JsonSchema.array(
-    items: JsonSchema.string(minLength: 1),
-    description: 'Cross-cutting category tags.',
-    uniqueItems: true,
-  ),
-  'body': JsonSchema.string(
-    description: 'Markdown body below the frontmatter.',
-  ),
-};
-
-/// The managed frontmatter fields [arguments] carries.
-///
-/// An absent field is left out rather than nulled, so an update never clears
-/// what the caller did not mention.
-Map<String, Object?> _managedFrontmatter(Map<String, Object?> arguments) =>
-    <String, Object?>{
-      if (arguments['type'] case final String type) 'type': type,
-      if (arguments['title'] case final String title) 'title': title,
-      if (arguments['description'] case final String description)
-        'description': description,
-      if (arguments['tags'] case final List<Object?> tags)
-        'tags': tags.cast<String>(),
-    };
-
-/// The optional narrowing a list call asks for.
-///
-/// The input schema has already been enforced when arguments reach
-/// [fromArguments], so each field is either absent or a non-empty string.
-final class _ConceptFilter {
-  const _ConceptFilter({this.prefix, this.type, this.query});
-
-  factory _ConceptFilter.fromArguments(Map<String, Object?> arguments) =>
-      _ConceptFilter(
-        prefix: arguments['prefix'] as String?,
-        type: arguments['type'] as String?,
-        query: (arguments['query'] as String?)?.toLowerCase(),
-      );
-
-  /// Bundle area matched per [OkfConceptId.isWithin].
-  final String? prefix;
-  final String? type;
-
-  /// Lower-cased needle matched against the ID and title, so an agent can ask
-  /// for "meeting" without knowing where in the bundle meetings live.
-  final String? query;
-
-  bool matches(OkfConceptId id, OkfDocument document) {
-    if (prefix case final String prefix when !id.isWithin(prefix)) {
-      return false;
-    }
-    if (type case final String type when document.type != type) {
-      return false;
-    }
-    if (query case final String query
-        when !id.value.toLowerCase().contains(query) &&
-            !(document.title ?? '').toLowerCase().contains(query)) {
-      return false;
-    }
-    return true;
-  }
-}
-
 /// The response to a list call: the summaries [filter] keeps and, when none
 /// survive in a non-empty bundle, the type and area vocabulary the bundle
 /// actually holds — so the caller corrects its filters in the same round trip
 /// instead of falling back to an unfiltered dump to find out what to ask for.
-Map<String, Object?> _conceptListing(OkfBundle bundle, _ConceptFilter filter) {
+Map<String, Object?> _conceptListing(
+  OkfBundle bundle,
+  ListConceptsInput filter,
+) {
+  final query = filter.query?.toLowerCase();
+
+  bool matches(OkfConceptId id, OkfDocument document) {
+    if (filter.prefix case final String prefix when !id.isWithin(prefix)) {
+      return false;
+    }
+    if (filter.type case final String type when document.type != type) {
+      return false;
+    }
+    return query == null ||
+        id.value.toLowerCase().contains(query) ||
+        (document.title ?? '').toLowerCase().contains(query);
+  }
+
   final concepts = <Map<String, Object?>>[
     for (final entry in bundle.concepts.entries)
-      if (filter.matches(entry.key, entry.value))
+      if (matches(entry.key, entry.value))
         _conceptSummary(entry.key, entry.value),
   ];
   return <String, Object?>{
@@ -477,17 +371,14 @@ Map<String, Object?> _conceptListing(OkfBundle bundle, _ConceptFilter filter) {
 /// The document path is deliberately absent: it is always the ID plus the
 /// `.md` suffix, and repeating it once per concept is what pushed full-bundle
 /// listings past client tool-result limits.
-Map<String, Object?> _conceptSummary(OkfConceptId id, OkfDocument document) {
-  final type = document.type;
-  final title = document.title;
-  return <String, Object?>{
-    'id': id.value,
-    if (type != null) 'type': type,
-    if (title != null) 'title': title,
-    'status': document.status.wireValue,
-    'trust_tier': document.trustTier.wireValue,
-  };
-}
+Map<String, Object?> _conceptSummary(OkfConceptId id, OkfDocument document) =>
+    <String, Object?>{
+      'id': id.value,
+      'type': ?document.type,
+      'title': ?document.title,
+      'status': document.status.wireValue,
+      'trust_tier': document.trustTier.wireValue,
+    };
 
 /// Counts [values], largest first, ties broken alphabetically so the same
 /// bundle always reports the same hint.
@@ -509,20 +400,19 @@ Map<String, int> _histogram(Iterable<String> values) {
 /// Carrying a structured copy next to the serialized one doubled every
 /// result on the wire, which is what pushed full-bundle reads past client
 /// tool-result token limits.
-CallToolResult _payload(Map<String, Object?> payload) => CallToolResult(
-      content: <Content>[TextContent(text: jsonEncode(payload))],
-    );
+CallToolResult _payload(Map<String, Object?> payload) =>
+    CallToolResult(content: <Content>[TextContent(text: jsonEncode(payload))]);
 
 /// Refuses a call, carrying [report] so the caller learns why in one round
 /// trip instead of having to ask the validate tool. Like [_payload], the
 /// report is serialized exactly once — as the text block after the message.
 CallToolResult _error(String message, {OkfReport? report}) => CallToolResult(
-      isError: true,
-      content: <Content>[
-        TextContent(text: message),
-        if (report != null)
-          TextContent(
-            text: jsonEncode(<String, Object?>{'report': report.toJson()}),
-          ),
-      ],
-    );
+  isError: true,
+  content: <Content>[
+    TextContent(text: message),
+    if (report != null)
+      TextContent(
+        text: jsonEncode(<String, Object?>{'report': report.toJson()}),
+      ),
+  ],
+);

@@ -55,6 +55,7 @@ Future<void> main() async {
   }
   output.writeln('};');
 
-  await File('lib/src/io/bundle_change_case_folding.dart')
-      .writeAsString(output.toString());
+  await File(
+    'lib/src/io/bundle_change_case_folding.dart',
+  ).writeAsString(output.toString());
 }

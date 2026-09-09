@@ -68,10 +68,7 @@ timestamp: "2026-07-01"
         'attesters/index.md':
             '# Attesters\n\n* [check.dart](check.dart) - Verifies output.\n',
       },
-      assets: const <String>[
-        'attesters/check.dart',
-        'queries/revenue.sql',
-      ],
+      assets: const <String>['attesters/check.dart', 'queries/revenue.sql'],
     );
 
     final report = const OkfSpecValidator().validate(bundle).report;
@@ -106,10 +103,7 @@ timestamp: "2026-07-01"
   test('producer shape deviations remain advisory', () {
     final bundle = OkfBundle.fromDocuments(<String, OkfDocument>{
       'metric.md': OkfDocument(
-        frontmatter: <String, Object?>{
-          'type': 'Metric',
-          'tags': 'finance',
-        },
+        frontmatter: <String, Object?>{'type': 'Metric', 'tags': 'finance'},
       ),
     });
 

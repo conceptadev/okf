@@ -30,13 +30,6 @@ final class OkfBundleChangeApplier {
   /// Supplies the date generated log entries are recorded under.
   final DateTime Function() clock;
 
-  /// Builds and validates a complete candidate without writing any file.
-  Future<OkfBundlePreparation> prepare(
-    String rootPath,
-    OkfBundleChangeSet changes,
-  ) =>
-      _prepare(rootPath, changes);
-
   /// Commits exactly the bytes bound into [prepared].
   Future<OkfBundleCommitResult> commit(OkfPreparedChange prepared) =>
       OkfBundleLock.write(
@@ -53,17 +46,16 @@ final class OkfBundleChangeApplier {
   Future<OkfBundleApplication> apply(
     String rootPath,
     OkfBundleChangeSet changes,
-  ) =>
-      OkfBundleLock.write(rootPath, () async {
-        final preparation = await _prepare(rootPath, changes);
-        return switch (preparation) {
-          OkfPreparationReady(prepared: final prepared) => OkfBundleApplied(
-              result: await _commitLocked(prepared),
-            ),
-          OkfPreparationRefused(validation: final validation) =>
-            OkfBundleApplicationRefused(validation: validation),
-        };
-      });
+  ) => OkfBundleLock.write(rootPath, () async {
+    final preparation = await prepare(rootPath, changes);
+    return switch (preparation) {
+      OkfPreparationReady(prepared: final prepared) => OkfBundleApplied(
+        result: await _commitLocked(prepared),
+      ),
+      OkfPreparationRefused(validation: final validation) =>
+        OkfBundleApplicationRefused(validation: validation),
+    };
+  });
 
   Future<OkfBundleCommitResult> _commitLocked(
     OkfPreparedChange prepared,
@@ -84,7 +76,8 @@ final class OkfBundleChangeApplier {
     return OkfBundleCommitResult(changedPaths: written.changedPaths);
   }
 
-  Future<OkfBundlePreparation> _prepare(
+  /// Builds and validates a complete candidate without writing any file.
+  Future<OkfBundlePreparation> prepare(
     String rootPath,
     OkfBundleChangeSet changes,
   ) async {
@@ -104,7 +97,7 @@ final class OkfBundleChangeApplier {
     }
 
     final changedFiles = Map<String, String>.unmodifiable(overlay.files);
-    final candidate = _candidate(
+    final candidate = OkfPreparedCandidate._fromSnapshot(
       loaded: loaded,
       source: sourceAfter,
       changedFiles: changedFiles,
@@ -215,52 +208,52 @@ Future<void> _validateCandidatePaths(
   }
 }
 
-OkfPreparedCandidate _candidate({
-  required OkfBundleLoadResult loaded,
-  required _BundleSnapshot source,
-  required Map<String, String> changedFiles,
-}) {
-  String preparedText(String path, String fallback) =>
-      changedFiles[path] ?? source.text(path) ?? fallback;
-
-  return OkfPreparedCandidate._(
-    concepts: <String, String>{
-      for (final entry in loaded.documents.entries)
-        entry.key: preparedText(entry.key, entry.value.serialize()),
-      for (final entry in changedFiles.entries)
-        if (_isConceptPath(entry.key)) entry.key: entry.value,
-    },
-    indexes: <String, String>{
-      for (final entry in loaded.indexes.entries)
-        entry.key: preparedText(entry.key, entry.value),
-      for (final entry in changedFiles.entries)
-        if (p.posix.basename(entry.key) == 'index.md') entry.key: entry.value,
-    },
-    logs: <String, String>{
-      for (final entry in loaded.logs.entries)
-        entry.key: preparedText(entry.key, entry.value),
-      for (final entry in changedFiles.entries)
-        if (p.posix.basename(entry.key) == 'log.md') entry.key: entry.value,
-    },
-    assets: loaded.assets.toSet(),
-  );
-}
-
 /// An immutable view of the complete candidate prepared for a bundle write.
 ///
 /// Concept values are the exact serialized Markdown bytes represented by the
 /// candidate. [toBundle] returns a detached in-memory copy for downstream
 /// inspection; changing that copy cannot change a prepared write.
 final class OkfPreparedCandidate {
+  factory OkfPreparedCandidate._fromSnapshot({
+    required OkfBundleLoadResult loaded,
+    required _BundleSnapshot source,
+    required Map<String, String> changedFiles,
+  }) {
+    String preparedText(String path, String fallback) =>
+        changedFiles[path] ?? source.text(path) ?? fallback;
+
+    return OkfPreparedCandidate._(
+      concepts: <String, String>{
+        for (final entry in loaded.documents.entries)
+          entry.key: preparedText(entry.key, entry.value.serialize()),
+        for (final entry in changedFiles.entries)
+          if (_isConceptPath(entry.key)) entry.key: entry.value,
+      },
+      indexes: <String, String>{
+        for (final entry in loaded.indexes.entries)
+          entry.key: preparedText(entry.key, entry.value),
+        for (final entry in changedFiles.entries)
+          if (p.posix.basename(entry.key) == 'index.md') entry.key: entry.value,
+      },
+      logs: <String, String>{
+        for (final entry in loaded.logs.entries)
+          entry.key: preparedText(entry.key, entry.value),
+        for (final entry in changedFiles.entries)
+          if (p.posix.basename(entry.key) == 'log.md') entry.key: entry.value,
+      },
+      assets: loaded.assets.toSet(),
+    );
+  }
+
   OkfPreparedCandidate._({
     required Map<String, String> concepts,
     required Map<String, String> indexes,
     required Map<String, String> logs,
     required Set<String> assets,
-  })  : concepts = Map<String, String>.unmodifiable(concepts),
-        indexes = Map<String, String>.unmodifiable(indexes),
-        logs = Map<String, String>.unmodifiable(logs),
-        assets = Set<String>.unmodifiable(assets);
+  }) : concepts = Map<String, String>.unmodifiable(concepts),
+       indexes = Map<String, String>.unmodifiable(indexes),
+       logs = Map<String, String>.unmodifiable(logs),
+       assets = Set<String>.unmodifiable(assets);
 
   final Map<String, String> concepts;
   final Map<String, String> indexes;
@@ -268,14 +261,14 @@ final class OkfPreparedCandidate {
   final Set<String> assets;
 
   OkfBundle toBundle() => OkfBundle.fromDocuments(
-        <String, OkfDocument>{
-          for (final entry in concepts.entries)
-            entry.key: OkfDocument.parse(entry.value, sourcePath: entry.key),
-        },
-        indexes: indexes,
-        logs: logs,
-        assets: assets,
-      );
+    <String, OkfDocument>{
+      for (final entry in concepts.entries)
+        entry.key: OkfDocument.parse(entry.value, sourcePath: entry.key),
+    },
+    indexes: indexes,
+    logs: logs,
+    assets: assets,
+  );
 }
 
 /// Opaque proof that an exact candidate passed OKF Spec validation.
@@ -311,7 +304,7 @@ final class OkfPreparationReady extends OkfBundlePreparation {
 
 final class OkfBundleCommitResult {
   OkfBundleCommitResult({required Iterable<String> changedPaths})
-      : changedPaths = List<String>.unmodifiable(changedPaths);
+    : changedPaths = List<String>.unmodifiable(changedPaths);
 
   final List<String> changedPaths;
 }
@@ -398,8 +391,8 @@ Future<_BundleSnapshot> _snapshot(
         retainedText[relative] = bytes;
         fingerprints[relative] = sha256.convert(bytes).toString();
       } else {
-        fingerprints[relative] =
-            (await sha256.bind(file.openRead()).first).toString();
+        fingerprints[relative] = (await sha256.bind(file.openRead()).first)
+            .toString();
       }
     } else if (type == FileSystemEntityType.link) {
       fingerprints['$_linkFingerprintPrefix$relative'] = sha256
@@ -416,9 +409,8 @@ Future<_BundleSnapshot> _snapshot(
 
 const String _linkFingerprintPrefix = '@link:';
 
-String _portablePathKey(String path) => unorm.nfd(
-      unorm.nfd(path).runes.map(_caseFoldRune).join(),
-    );
+String _portablePathKey(String path) =>
+    unorm.nfd(unorm.nfd(path).runes.map(_caseFoldRune).join());
 
 String _caseFoldRune(int rune) =>
     _caseFoldMappings[rune] ?? String.fromCharCode(rune);
@@ -428,8 +420,8 @@ final class _BundleSnapshot {
     required this.rootPath,
     required Map<String, String> fingerprints,
     required Map<String, List<int>> retainedText,
-  })  : fingerprints = Map<String, String>.unmodifiable(fingerprints),
-        retainedText = Map<String, List<int>>.unmodifiable(retainedText);
+  }) : fingerprints = Map<String, String>.unmodifiable(fingerprints),
+       retainedText = Map<String, List<int>>.unmodifiable(retainedText);
 
   final String rootPath;
   final Map<String, String> fingerprints;
@@ -441,10 +433,10 @@ final class _BundleSnapshot {
   }
 
   _BundleSnapshot withoutText() => _BundleSnapshot(
-        rootPath: rootPath,
-        fingerprints: fingerprints,
-        retainedText: const <String, List<int>>{},
-      );
+    rootPath: rootPath,
+    fingerprints: fingerprints,
+    retainedText: const <String, List<int>>{},
+  );
 
   bool sameContent(_BundleSnapshot other) {
     if (fingerprints.length != other.fingerprints.length) {

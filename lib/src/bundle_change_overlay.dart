@@ -53,10 +53,7 @@ final class OkfBundleChangeOverlay {
       }
       final path = applied.id.documentPath;
       final serialized = applied.document.serialize();
-      documents[applied.id] = OkfDocument.parse(
-        serialized,
-        sourcePath: path,
-      );
+      documents[applied.id] = OkfDocument.parse(serialized, sourcePath: path);
       files[path] = serialized;
       logEntries.add(applied.entry);
       if (applied.affectsIndex) {
@@ -115,12 +112,8 @@ final class OkfBundleChangeOverlay {
 
 /// Interprets one change against [documents], or returns `null` when the
 /// bundle already describes it.
-({
-  OkfConceptId id,
-  OkfDocument document,
-  OkfLogEntry entry,
-  bool affectsIndex,
-})? _applyChange(
+({OkfConceptId id, OkfDocument document, OkfLogEntry entry, bool affectsIndex})?
+_applyChange(
   Map<OkfConceptId, OkfDocument> documents,
   OkfBundleChange change,
   String day,
@@ -134,7 +127,11 @@ final class OkfBundleChangeOverlay {
       return (
         id: id,
         document: document,
-        entry: _logEntry(day, 'Created', _conceptLink(id, document)),
+        entry: OkfLogEntry(
+          date: day,
+          action: 'Created',
+          description: _conceptLink(id, document),
+        ),
         affectsIndex: true,
       );
 
@@ -151,15 +148,19 @@ final class OkfBundleChangeOverlay {
       return (
         id: id,
         document: updated,
-        entry: _logEntry(day, 'Updated', _conceptLink(id, updated)),
+        entry: OkfLogEntry(
+          date: day,
+          action: 'Updated',
+          description: _conceptLink(id, updated),
+        ),
         affectsIndex: _indexProjection(current) != _indexProjection(updated),
       );
 
     case OkfLinkConceptsChange(
-        source: final source,
-        target: final target,
-        relationship: final relationship,
-      ):
+      source: final source,
+      target: final target,
+      relationship: final relationship,
+    ):
       _rejectReservedPath(target);
       final current = _requireDocument(documents, source);
       final targetDocument = documents[target];
@@ -183,10 +184,11 @@ final class OkfBundleChangeOverlay {
         document: _withFrontmatter(current, <String, Object?>{
           'sources': <Object?>[...declared, link],
         }),
-        entry: _logEntry(
-          day,
-          'Linked',
-          '${_conceptLink(source, current)} $relationship '
+        entry: OkfLogEntry(
+          date: day,
+          action: 'Linked',
+          description:
+              '${_conceptLink(source, current)} $relationship '
               '${_conceptLink(target, targetDocument)}',
         ),
         affectsIndex: false,
@@ -201,14 +203,13 @@ final class OkfBundleChangeOverlay {
       final trimmedNote = note?.trim() ?? '';
       return (
         id: id,
-        document: _withFrontmatter(
-          current,
-          const <String, Object?>{'status': _deprecated},
-        ),
-        entry: _logEntry(
-          day,
-          'Deprecated',
-          trimmedNote.isEmpty ? link : '$link — $trimmedNote',
+        document: _withFrontmatter(current, const <String, Object?>{
+          'status': _deprecated,
+        }),
+        entry: OkfLogEntry(
+          date: day,
+          action: 'Deprecated',
+          description: trimmedNote.isEmpty ? link : '$link — $trimmedNote',
         ),
         affectsIndex: false,
       );
@@ -217,13 +218,11 @@ final class OkfBundleChangeOverlay {
 
 ({String type, String title, String description}) _indexProjection(
   OkfDocument document,
-) =>
-    (
-      type: _indexValue(document.frontmatter['type'], fallback: 'Other'),
-      title: _indexValue(document.frontmatter['title']),
-      description:
-          _indexValue(document.frontmatter['description'], fallback: ''),
-    );
+) => (
+  type: _indexValue(document.frontmatter['type'], fallback: 'Other'),
+  title: _indexValue(document.frontmatter['title']),
+  description: _indexValue(document.frontmatter['description'], fallback: ''),
+);
 
 String _indexValue(Object? value, {String? fallback}) =>
     value is String && value.trim().isNotEmpty ? value.trim() : fallback ?? '';
@@ -258,8 +257,10 @@ OkfDocument _withFrontmatter(
 /// resulting state is refused.
 String? _rewrittenLog(String? source, List<OkfLogEntry> entries) {
   if (source == null) {
-    return OkfLogDocument(title: _defaultLogTitle, entries: entries)
-        .serialize();
+    return OkfLogDocument(
+      title: _defaultLogTitle,
+      entries: entries,
+    ).serialize();
   }
 
   final OkfDocument document;
@@ -308,9 +309,6 @@ bool _sameLink(Object? entry, Map<String, Object?> link) =>
     entry is Map<Object?, Object?> &&
     entry['resource'] == link['resource'] &&
     entry['relationship'] == link['relationship'];
-
-OkfLogEntry _logEntry(String day, String action, String description) =>
-    OkfLogEntry(date: day, action: action, description: description);
 
 String _conceptLink(OkfConceptId id, OkfDocument? document) {
   final String title;

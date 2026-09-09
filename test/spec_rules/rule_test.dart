@@ -63,9 +63,7 @@ void main() {
         hasFrontmatter: false,
       ),
       'missing-type.md': OkfDocument(),
-      'numeric-type.md': OkfDocument(
-        frontmatter: <String, Object?>{'type': 7},
-      ),
+      'numeric-type.md': OkfDocument(frontmatter: <String, Object?>{'type': 7}),
     });
 
     final first = validator.validate(bundle);

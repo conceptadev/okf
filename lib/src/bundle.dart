@@ -13,10 +13,10 @@ final class OkfBundle {
     required Map<String, String> indexFiles,
     required Map<String, String> logFiles,
     required Set<String> assetPaths,
-  })  : concepts = UnmodifiableMapView(concepts),
-        indexFiles = UnmodifiableMapView(indexFiles),
-        logFiles = UnmodifiableMapView(logFiles),
-        assetPaths = UnmodifiableSetView(assetPaths);
+  }) : concepts = UnmodifiableMapView(concepts),
+       indexFiles = UnmodifiableMapView(indexFiles),
+       logFiles = UnmodifiableMapView(logFiles),
+       assetPaths = UnmodifiableSetView(assetPaths);
 
   /// Builds a bundle from POSIX, bundle-relative document paths.
   ///

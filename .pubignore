@@ -11,4 +11,4 @@ node_modules/
 package-lock.json
 package.json
 tool/
-test/ci_gate_test.dart
+test/ci/gate_test.dart

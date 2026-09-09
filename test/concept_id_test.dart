@@ -65,10 +65,7 @@ void main() {
       );
 
       // Reserved names are exact and case-sensitive.
-      expect(
-        OkfConceptId.fromDocumentPath('Index.md').value,
-        'Index',
-      );
+      expect(OkfConceptId.fromDocumentPath('Index.md').value, 'Index');
     });
   });
 

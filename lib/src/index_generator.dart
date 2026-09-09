@@ -7,8 +7,8 @@ import 'index_log.dart';
 import 'link_path.dart';
 
 /// Supplies a deterministic description for a directory index.
-typedef OkfDirectoryDescriptionSynthesizer = String Function(
-    String directory, List<OkfIndexEntry> entries);
+typedef OkfDirectoryDescriptionSynthesizer =
+    String Function(String directory, List<OkfIndexEntry> entries);
 
 /// Generates deterministic, progressively disclosed `index.md` files.
 final class OkfIndexGenerator {
@@ -26,10 +26,7 @@ final class OkfIndexGenerator {
   /// Map iteration order is deepest directory first so callers can write the
   /// returned files in the same order they were derived. Existing root
   /// `okf_version` frontmatter is retained unless [declareVersion] is given.
-  Map<String, String> generate(
-    OkfBundle bundle, {
-    String? declareVersion,
-  }) {
+  Map<String, String> generate(OkfBundle bundle, {String? declareVersion}) {
     final directories = _directoriesToIndex(bundle);
     final knownDirectories = directories.toSet();
     final descriptions = <String, String>{};
@@ -52,7 +49,7 @@ final class OkfIndexGenerator {
         entries: entries,
         okfVersion: isRoot
             ? declareVersion ??
-                _existingRootVersion(bundle.indexFiles[indexPath])
+                  _existingRootVersion(bundle.indexFiles[indexPath])
             : null,
       ).serialize();
 
@@ -111,7 +108,8 @@ final class OkfIndexGenerator {
       entries.add(
         OkfIndexEntry(
           type: _nonEmptyString(document.frontmatter['type']) ?? 'Other',
-          title: _nonEmptyString(document.frontmatter['title']) ??
+          title:
+              _nonEmptyString(document.frontmatter['title']) ??
               entry.key.basename,
           link: encodeOkfLinkSegment('${entry.key.basename}.md'),
           description:
@@ -153,10 +151,7 @@ final class OkfIndexGenerator {
     return entries;
   }
 
-  String _describeDirectory(
-    String directory,
-    List<OkfIndexEntry> entries,
-  ) {
+  String _describeDirectory(String directory, List<OkfIndexEntry> entries) {
     if (entries.length == 1 && entries.single.description.trim().isNotEmpty) {
       return entries.single.description;
     }
