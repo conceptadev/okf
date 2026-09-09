@@ -1,5 +1,5 @@
 ---
-"okf": minor
+"okf": patch
 ---
 
 Coordinate bundle operations through a reserved `.okf.lock` file at the
