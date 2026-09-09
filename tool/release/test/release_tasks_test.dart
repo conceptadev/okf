@@ -6,11 +6,12 @@ void main() {
   test(
     'exposes the cli_pkg deployment tasks the release workflow runs',
     () async {
-      final result = await Process.run(Platform.resolvedExecutable, <String>[
-        'run',
-        'grinder',
-        '--help',
-      ], workingDirectory: Directory.current.absolute.path);
+      const arguments = <String>['run', 'grinder', '--help'];
+      final result = await Process.run(
+        Platform.resolvedExecutable,
+        arguments,
+        workingDirectory: Directory.current.absolute.path,
+      );
 
       expect(result.exitCode, 0, reason: '${result.stderr}');
       expect(
