@@ -3,30 +3,25 @@ import 'dart:io';
 import 'package:test/test.dart';
 
 void main() {
-  test('exposes build and project deployment tasks', () async {
-    final toolDirectory = Directory.current.absolute;
-    final repository = toolDirectory.parent.parent;
-    final separator = Platform.pathSeparator;
-    final packageConfig =
-        '${toolDirectory.path}$separator.dart_tool${separator}package_config.json';
-    final entrypoint = '${toolDirectory.path}${separator}grind.dart';
+  test(
+    'exposes the cli_pkg deployment tasks the release workflow runs',
+    () async {
+      final result = await Process.run(Platform.resolvedExecutable, <String>[
+        'run',
+        'grinder',
+        '--help',
+      ], workingDirectory: Directory.current.absolute.path);
 
-    final result = await Process.run(Platform.resolvedExecutable, <String>[
-      '--packages=$packageConfig',
-      entrypoint,
-      '--help',
-    ], workingDirectory: repository.path);
-
-    expect(result.exitCode, 0, reason: '${result.stderr}');
-    expect(
-      result.stdout,
-      allOf(
-        contains('pkg-compile-native'),
-        contains('okf-build-binary'),
-        contains('okf-deploy-github'),
-        contains('okf-deploy-pub'),
-        contains('okf-deploy-homebrew'),
-      ),
-    );
-  });
+      expect(result.exitCode, 0, reason: '${result.stderr}');
+      expect(
+        result.stdout,
+        allOf(
+          contains('pkg-github-release'),
+          contains('pkg-github-linux'),
+          contains('pkg-github-macos'),
+          contains('pkg-homebrew-update'),
+        ),
+      );
+    },
+  );
 }

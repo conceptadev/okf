@@ -1,0 +1,22 @@
+name: "Prepare"
+description: "Sets up the Dart toolchain and resolves the package."
+
+inputs:
+  sdk-version:
+    description: "Dart SDK version"
+    required: false
+    default: "stable"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Dart
+      uses: dart-lang/setup-dart@v1
+      with:
+        sdk: ${{ inputs.sdk-version }}
+        # Work around dart-lang/setup-dart#198 in composite actions.
+        problem-matcher: false
+
+    - name: Get dependencies
+      run: dart pub get
+      shell: bash

@@ -96,18 +96,16 @@ steps:
   - uses: conceptadev/okf@v0.3.0
 ```
 
-The action downloads the released `okf` binary for the ref in `uses` and runs
-`okf validate` once. Before execution, it verifies the binary against the
-immutable release's signed asset attestation. The job fails on the exit code of
-that single invocation, so CI reaches the same verdict as the command line.
-Inputs:
+The action downloads the released `okf` archive for the ref in `uses`, unpacks
+it, and runs `okf validate` once. The job fails on the exit code of that single
+invocation, so CI reaches the same verdict as the command line. Inputs:
 
 - `bundle`: the bundle to validate. Defaults to the repository root.
 - `strict`: set to `true` to fail on advisories as well as errors.
 - `engine-version`: override the release tag inferred from the action ref.
 
-Releases attach an `okf-linux-x64` and an `okf-macos-arm64` binary, so the
-action runs on Linux and macOS runners.
+Releases attach an `okf-<version>-<os>-<arch>.tar.gz` archive per platform, so
+the action runs on Linux and macOS runners.
 
 The Dart library and CLI are tested on Linux and Windows with Dart 3.9 and
 the current stable SDK. Windows support does not include this composite

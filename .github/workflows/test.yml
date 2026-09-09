@@ -1,0 +1,131 @@
+name: Test CLI
+
+on:
+  workflow_call:
+    inputs:
+      sdk-version:
+        description: "Dart SDK version"
+        type: string
+        required: false
+        default: "stable"
+
+  pull_request:
+
+  push:
+    branches: [main]
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SDK_VERSION: "stable"
+  # The release tool depends on cli_pkg 2.15.2, which uses the Dart 3.11-only
+  # xml 7 API. The rest of the repository still targets the >=3.4.0 floor.
+  RELEASE_DART_SDK: "3.11.0"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare environment
+        uses: ./.github/actions/prepare
+        with:
+          sdk-version: ${{ (github.event_name == 'workflow_call' && inputs.sdk-version) || env.SDK_VERSION }}
+
+      - name: Verify generated models are current
+        run: dart run tool/ci/check_generated.dart
+
+      - name: Format check
+        run: >-
+          dart format --output=none --set-exit-if-changed
+          bin example lib test tool/ci tool/generate_case_folding.dart
+
+      - name: Analyze
+        run: dart analyze --fatal-infos
+
+      - name: Tests
+        run: dart test
+
+      - name: Publish dry run
+        run: dart pub publish --dry-run
+
+      - name: Setup Dart (release tool)
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: ${{ env.RELEASE_DART_SDK }}
+
+      - name: Release tool | Install dependencies
+        working-directory: tool/release
+        run: dart pub get --enforce-lockfile
+
+      - name: Release tool | Format check
+        working-directory: tool/release
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Release tool | Analyze
+        working-directory: tool/release
+        run: dart analyze --fatal-infos
+
+      - name: Release tool | Tests
+        working-directory: tool/release
+        run: dart test
+
+  test-os:
+    name: Test on ${{ matrix.os }}
+    timeout-minutes: 30
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare environment
+        uses: ./.github/actions/prepare
+        with:
+          sdk-version: ${{ (github.event_name == 'workflow_call' && inputs.sdk-version) || env.SDK_VERSION }}
+
+      - name: Analyze
+        run: dart analyze --fatal-infos
+        shell: bash
+
+      - name: Tests
+        run: dart test
+        shell: bash
+
+  # pubspec.yaml promises >=3.9.0. Nothing else in this workflow would notice a
+  # feature that silently raises the real floor, so keep one job on it.
+  sdk-floor:
+    name: SDK floor
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare environment
+        uses: ./.github/actions/prepare
+        with:
+          sdk-version: "3.9.0"
+
+      # No format check here: dart format's output is version-dependent, and
+      # the stable job already enforces the canonical style.
+      - name: Analyze
+        run: dart analyze --fatal-infos
+
+      - name: Tests
+        run: dart test

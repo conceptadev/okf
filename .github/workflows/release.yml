@@ -1,186 +1,91 @@
-name: Release
+name: Deploy Release
 
 on:
-  push:
-    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
   workflow_dispatch:
+  push:
+    tags:
+      - "v*"
 
-permissions:
-  contents: read
-
-concurrency:
-  group: release-${{ github.ref }}
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  # cli_pkg 2.15.2 uses the Dart 3.11-only xml 7 API; pinned for reproducibility.
+  RELEASE_DART_SDK: "3.11.0"
 
 jobs:
-  ref:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Require a stable release tag
-        env:
-          REF_NAME: ${{ github.ref_name }}
-          REF_TYPE: ${{ github.ref_type }}
-        run: |
-          [[ "$REF_TYPE" == tag ]]
-          [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+  test:
+    name: Test
+    uses: ./.github/workflows/test.yml
+    secrets: inherit
 
-  platforms:
-    needs: ref
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.matrix.outputs.value }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - id: matrix
-        run: echo "value=$(bash tool/ci/release-matrix.sh)" >> "$GITHUB_OUTPUT"
-
-  verify:
-    needs: ref
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: dart-lang/setup-dart@7654d458321ee25acccccfdb86cd48bd95768ff1 # v1.8.0
-        with:
-          sdk: stable
-      - run: dart pub get
-      - name: Verify generated models are current
-        run: dart run tool/ci/check_generated.dart
-      - run: dart pub -C tool/release get --enforce-lockfile
-      - run: dart format --output=none --set-exit-if-changed .
-      - run: dart analyze --fatal-infos
-      - run: dart test
-      - working-directory: tool/release
-        run: dart analyze --fatal-infos
-      - working-directory: tool/release
-        run: dart run test
-      - run: dart pub publish --dry-run
-
-  binaries:
-    needs: [platforms, verify]
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.platforms.outputs.matrix) }}
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: dart-lang/setup-dart@7654d458321ee25acccccfdb86cd48bd95768ff1 # v1.8.0
-        with:
-          sdk: stable
-      - run: dart pub get
-      - run: dart pub -C tool/release get --enforce-lockfile
-      - env:
-          ASSET: ${{ matrix.asset }}
-        run: >-
-          dart --packages=tool/release/.dart_tool/package_config.json
-          tool/release/grind.dart okf-build-binary
-      - env:
-          ASSET: ${{ matrix.asset }}
-          TAG: ${{ github.ref_name }}
-        run: bash tool/ci/verify-engine-version.sh "./$ASSET" "$TAG"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ${{ matrix.asset }}
-          path: ${{ matrix.asset }}
-          if-no-files-found: error
-
-  publish:
-    needs: binaries
+  release:
+    name: Release
+    needs: test
     runs-on: ubuntu-latest
     permissions:
-      actions: read
       contents: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: dart-lang/setup-dart@7654d458321ee25acccccfdb86cd48bd95768ff1 # v1.8.0
-        with:
-          sdk: stable
-      - run: dart pub -C tool/release get --enforce-lockfile
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: okf-*
-          path: dist
-          merge-multiple: true
-      - env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
-          DISTRIBUTION: dist
-        run: >-
-          dart --packages=tool/release/.dart_tool/package_config.json
-          tool/release/grind.dart okf-deploy-github
-
-  homebrew:
-    needs: publish
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: dart-lang/setup-dart@7654d458321ee25acccccfdb86cd48bd95768ff1 # v1.8.0
-        with:
-          sdk: stable
-      - run: dart pub -C tool/release get --enforce-lockfile
-      # Formula checksums must match the bytes the release actually serves, so
-      # read the assets back from the published release rather than trusting
-      # the artifacts this run happened to build.
-      - env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern 'okf-*' --dir dist --clobber
-      - env:
-          GH_REPO: ${{ github.repository }}
-          HOMEBREW_TAP_REPO: conceptadev/homebrew-tap
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_GH_TOKEN }}
-          TAG: ${{ github.ref_name }}
-          DISTRIBUTION: dist
-        run: >-
-          dart --packages=tool/release/.dart_tool/package_config.json
-          tool/release/grind.dart okf-deploy-homebrew
-
-  pub-publish:
-    needs: publish
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
       id-token: write # exchanged by setup-dart for temporary pub.dev credentials
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare environment
+        uses: ./.github/actions/prepare
         with:
-          persist-credentials: false
-      - name: Check whether pub.dev already has this version
-        id: pub
+          sdk-version: ${{ env.RELEASE_DART_SDK }}
+
+      - name: Get release tool dependencies
+        working-directory: tool/release
+        run: dart pub get --enforce-lockfile
+
+      - name: Deploy Github
+        working-directory: tool/release
+        run: dart run grinder pkg-github-release
+
+      - name: Deploy Github Linux
+        working-directory: tool/release
+        run: dart run grinder pkg-github-linux
+
+      # cli_pkg's pkg-pub-deploy only knows how to write a long-lived
+      # PUB_CREDENTIALS file before publishing. setup-dart already exchanged
+      # this job's OIDC token for temporary pub.dev credentials, so publish
+      # directly and keep no durable secret.
+      - name: Deploy to Pub
+        run: dart pub publish --force
+
+  deploy-macos:
+    name: Deploy macOS
+    runs-on: macos-latest
+    needs: release
+    permissions:
+      contents: read
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare environment
+        uses: ./.github/actions/prepare
+        with:
+          sdk-version: ${{ env.RELEASE_DART_SDK }}
+
+      - name: Get release tool dependencies
+        working-directory: tool/release
+        run: dart pub get --enforce-lockfile
+
+      - name: Deploy Github Mac
+        working-directory: tool/release
+        run: dart run grinder pkg-github-macos
+
+      - name: Deploy versioned formula
+        working-directory: tool/release
+        run: dart run grinder pkg-homebrew-update --versioned-formula
         env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          version="${TAG#v}"
-          if curl --fail --silent --show-error \
-            https://pub.dev/api/packages/okf | \
-            jq -e --arg version "$version" \
-              '.versions | any(.version == $version)' >/dev/null; then
-            echo "published=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "published=false" >> "$GITHUB_OUTPUT"
-          fi
-      - if: steps.pub.outputs.published != 'true'
-        uses: dart-lang/setup-dart@7654d458321ee25acccccfdb86cd48bd95768ff1 # v1.8.0
-        with:
-          sdk: stable
-      - if: steps.pub.outputs.published != 'true'
-        run: dart pub get
-      - if: steps.pub.outputs.published != 'true'
-        run: dart pub -C tool/release get --enforce-lockfile
-      - if: steps.pub.outputs.published != 'true'
-        run: >-
-          dart --packages=tool/release/.dart_tool/package_config.json
-          tool/release/grind.dart okf-deploy-pub
+          GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GH_TOKEN }}
+
+      - name: Deploy Homebrew
+        working-directory: tool/release
+        run: dart run grinder pkg-homebrew-update
+        env:
+          GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GH_TOKEN }}

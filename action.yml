@@ -45,9 +45,9 @@ runs:
           echo "okf: engine-version is required when the action has no ref" >&2
           exit 1
         fi
-        bin="$RUNNER_TEMP/okf-$ENGINE_VERSION"
-        bash "$GITHUB_ACTION_PATH/tool/ci/install-engine.sh" \
-          "$ENGINE_VERSION" "$RUNNER_OS" "$RUNNER_ARCH" "$bin"
+        bin="$(bash "$GITHUB_ACTION_PATH/tool/ci/install-engine.sh" \
+          "$ENGINE_VERSION" "$RUNNER_OS" "$RUNNER_ARCH" \
+          "$RUNNER_TEMP/okf-$ENGINE_VERSION")"
         echo "bin=$bin" >> "$GITHUB_OUTPUT"
 
     - shell: bash
