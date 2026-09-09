@@ -19,6 +19,9 @@ fi
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 asset="$(bash "$script_dir/platform-asset.sh" "$version" "$runner_os" \
   "$runner_arch")"
+# cli_pkg names the release after the bare version, so the assets hang off
+# "<version>", not off the "v<version>" tag this action is referenced by.
+release="${version#v}"
 
 rm -rf "$directory"
 mkdir -p "$directory"
@@ -27,7 +30,7 @@ trap 'rm -f "$archive"' EXIT
 
 curl --fail --silent --show-error --location --retry 3 \
   --output "$archive" \
-  "https://github.com/conceptadev/okf/releases/download/$version/$asset"
+  "https://github.com/conceptadev/okf/releases/download/$release/$asset"
 tar --extract --gzip --file "$archive" --directory "$directory"
 
 # cli_pkg archives unpack to "<standalone name>/<executable>".

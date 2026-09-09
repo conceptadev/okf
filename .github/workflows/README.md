@@ -39,9 +39,14 @@ must match step 1.
 ## Version management
 
 - **Version source**: `pubspec.yaml`, edited by hand
-- **Tag format**: `vX.Y.Z`
+- **Tag format**: `vX.Y.Z` is what you push and what triggers the release.
+  cli_pkg hardcodes the GitHub release's `tag_name` to the **bare** version, so
+  the release job also publishes a `X.Y.Z` tag at the same commit and the
+  release assets hang off that one. Both tags therefore exist for every
+  release, and `conceptadev/okf@vX.Y.Z` keeps working as an action ref.
 - **CHANGELOG**: cli_pkg reads `CHANGELOG.md` for the GitHub release body
-- **Assets**: `okf-<version>-<os>-<arch>.tar.gz` per platform. Only the
+- **Assets**: `okf-<version>-<os>-<arch>.tar.gz` per platform, attached to the
+  bare-version release. Only the
   platform that runs the build gets a self-contained executable; every
   cross-compiled archive is a launcher plus a snapshot under `src/`.
 

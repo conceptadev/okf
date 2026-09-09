@@ -33,6 +33,22 @@ jobs:
         with:
           sdk-version: ${{ env.RELEASE_DART_SDK }}
 
+      # cli_pkg hardcodes the release's tag_name to the bare pubspec version
+      # and attaches every asset to that tag. Publish it at this commit first:
+      # left to itself, GitHub invents the tag at the default branch head,
+      # which is not necessarily what was tagged and tested.
+      - name: Tag the release commit with the bare version
+        run: |
+          [[ "$GITHUB_REF_TYPE" == tag ]]
+          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          version="${GITHUB_REF_NAME#v}"
+          if git ls-remote --exit-code --tags origin "$version" >/dev/null; then
+            echo "okf: $version already exists"
+          else
+            git tag "$version"
+            git push origin "$version"
+          fi
+
       - name: Get release tool dependencies
         working-directory: tool/release
         run: dart pub get --enforce-lockfile

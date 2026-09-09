@@ -116,6 +116,9 @@ void main() {
       ),
     );
     expect((workflow['on'] as YamlMap)['push'].toString(), contains('v*'));
+    // cli_pkg hardcodes the release's tag_name to the bare version. Without
+    // this tag, GitHub creates it at the default branch head instead.
+    expect(release.toString(), contains('git push origin "\$version"'));
 
     final grind = File('tool/release/tool/grind.dart').readAsStringSync();
     expect(
@@ -348,7 +351,9 @@ cp "\$FAKE_ASSET" "\$output"
         '${temporary.path}/install',
       ], environment: environment);
       expect(install.exitCode, 0, reason: '${install.stderr}');
-      expect(curlLog.readAsStringSync().trim(), endsWith('/v1.2.3/$asset'));
+      // cli_pkg names the release after the bare version, so the assets hang
+      // off "1.2.3" even though the action is referenced by the "v1.2.3" tag.
+      expect(curlLog.readAsStringSync().trim(), endsWith('/1.2.3/$asset'));
 
       final engine = (install.stdout as String).trim();
       expect(engine, '${temporary.path}/install/okf/okf');
