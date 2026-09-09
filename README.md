@@ -27,6 +27,12 @@ implementation and is not affiliated with or endorsed by Google.
 
 ## Install
 
+Install the command-line tool with Homebrew:
+
+```console
+brew install conceptadev/tap/okf
+```
+
 Add the library:
 
 ```console

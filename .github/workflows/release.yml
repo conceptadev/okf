@@ -114,6 +114,38 @@ jobs:
           dart --packages=tool/release/.dart_tool/package_config.json
           tool/release/grind.dart okf-deploy-github
 
+  homebrew:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dart-lang/setup-dart@7654d458321ee25acccccfdb86cd48bd95768ff1 # v1.8.0
+        with:
+          sdk: stable
+      - run: dart pub -C tool/release get --enforce-lockfile
+      # Formula checksums must match the bytes the release actually serves, so
+      # read the assets back from the published release rather than trusting
+      # the artifacts this run happened to build.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'okf-*' --dir dist --clobber
+      - env:
+          GH_REPO: ${{ github.repository }}
+          HOMEBREW_TAP_REPO: conceptadev/homebrew-tap
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_GH_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          DISTRIBUTION: dist
+        run: >-
+          dart --packages=tool/release/.dart_tool/package_config.json
+          tool/release/grind.dart okf-deploy-homebrew
+
   pub-publish:
     needs: publish
     runs-on: ubuntu-latest

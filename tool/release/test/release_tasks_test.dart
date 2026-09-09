@@ -25,6 +25,7 @@ void main() {
         contains('okf-build-binary'),
         contains('okf-deploy-github'),
         contains('okf-deploy-pub'),
+        contains('okf-deploy-homebrew'),
       ),
     );
   });
