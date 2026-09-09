@@ -32,6 +32,10 @@ jobs:
           sdk: stable
       - run: npm ci
       - run: dart pub get
+      # Resolve the nested release package before formatting the whole tree.
+      # Without its package config, dart format falls back to the root
+      # language version and applies the pre-3.7 style to tool/release.
+      - run: dart pub -C tool/release get --enforce-lockfile
       - run: dart format --output=none --set-exit-if-changed .
       - run: dart analyze --fatal-infos
       - run: dart test

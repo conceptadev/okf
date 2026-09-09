@@ -284,6 +284,33 @@ void main() {
     );
   });
 
+  test('whole-tree formatting resolves the nested release package', () {
+    // dart format reads each file's language version from its enclosing
+    // package. Without tool/release's package config, files under it are
+    // formatted with the root language version and the pre-3.7 style, so a
+    // repository-wide format must resolve that package first.
+    for (final path in <String>[
+      '.github/workflows/release-pr.yml',
+      '.github/workflows/release.yml',
+    ]) {
+      final steps = File(path).readAsLinesSync();
+      final resolve = steps.indexWhere(
+        (line) => line.contains('dart pub -C tool/release get'),
+      );
+      final format = steps.indexWhere(
+        (line) =>
+            line.contains('dart format --output=none --set-exit-if-changed .'),
+      );
+      expect(resolve, isNot(-1), reason: '$path never resolves tool/release');
+      expect(format, isNot(-1), reason: '$path never formats the whole tree');
+      expect(
+        resolve,
+        lessThan(format),
+        reason: '$path formats tool/release before resolving its package',
+      );
+    }
+  });
+
   test('composite action checks out and validates with zero configuration', () {
     final source = File('action.yml').readAsStringSync();
     final action = loadYaml(source) as YamlMap;
