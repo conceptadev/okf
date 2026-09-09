@@ -28,10 +28,9 @@ void main() {
     final job = (workflow['jobs'] as YamlMap)['release'] as YamlMap;
     final steps = job['steps'] as YamlList;
     final action = steps.cast<YamlMap>().singleWhere(
-          (step) =>
-              step['uses']?.toString().startsWith('changesets/action@') ??
-              false,
-        );
+      (step) =>
+          step['uses']?.toString().startsWith('changesets/action@') ?? false,
+    );
 
     expect(permissions['actions'], 'write');
     expect(permissions['contents'], 'write');
@@ -56,23 +55,23 @@ void main() {
     expect(source, isNot(contains('RELEASE_PLEASE_TOKEN')));
     expect(source, isNot(contains('id-token: write')));
 
-    final config = jsonDecode(
-      File('.changeset/config.json').readAsStringSync(),
-    ) as Map<String, Object?>;
+    final config =
+        jsonDecode(File('.changeset/config.json').readAsStringSync())
+            as Map<String, Object?>;
     expect(config['baseBranch'], 'main');
-    expect(
-      config['privatePackages'],
-      <String, Object?>{'version': true, 'tag': true},
-    );
+    expect(config['privatePackages'], <String, Object?>{
+      'version': true,
+      'tag': true,
+    });
 
     final dartPackage =
         loadYaml(File('pubspec.yaml').readAsStringSync()) as YamlMap;
-    final nodePackage = jsonDecode(
-      File('package.json').readAsStringSync(),
-    ) as Map<String, Object?>;
-    final packageLock = jsonDecode(
-      File('package-lock.json').readAsStringSync(),
-    ) as Map<String, Object?>;
+    final nodePackage =
+        jsonDecode(File('package.json').readAsStringSync())
+            as Map<String, Object?>;
+    final packageLock =
+        jsonDecode(File('package-lock.json').readAsStringSync())
+            as Map<String, Object?>;
     final packageVersion = dartPackage['version'] as String;
     expect(nodePackage['name'], 'okf');
     expect(nodePackage['private'], true);
@@ -91,60 +90,56 @@ void main() {
     expect(File('.release-please-manifest.json').existsSync(), false);
   });
 
-  test('release version synchronizer updates every Dart-facing version',
-      () async {
-    final temporary = Directory.systemTemp.createTempSync('okf-version-');
-    addTearDown(() => temporary.deleteSync(recursive: true));
-    Directory('${temporary.path}/lib/src').createSync(recursive: true);
-    File('${temporary.path}/package.json').writeAsStringSync(
-      '{"name":"okf","version":"1.2.3"}',
-    );
-    File('${temporary.path}/pubspec.yaml').writeAsStringSync(
-      'name: okf\nversion: 0.1.0\n',
-    );
-    File('${temporary.path}/lib/src/version.dart').writeAsStringSync(
-      "const okfPackageVersion = '0.1.0'; // stale\n",
-    );
-    File('${temporary.path}/README.md').writeAsStringSync(
-      'uses: conceptadev/okf@v0.1.0\n',
-    );
-    File('${temporary.path}/CHANGELOG.md').writeAsStringSync(
-      '## 1.2.3\n\n- Release.\n',
-    );
+  test(
+    'release version synchronizer updates every Dart-facing version',
+    () async {
+      final temporary = Directory.systemTemp.createTempSync('okf-version-');
+      addTearDown(() => temporary.deleteSync(recursive: true));
+      Directory('${temporary.path}/lib/src').createSync(recursive: true);
+      File(
+        '${temporary.path}/package.json',
+      ).writeAsStringSync('{"name":"okf","version":"1.2.3"}');
+      File(
+        '${temporary.path}/pubspec.yaml',
+      ).writeAsStringSync('name: okf\nversion: 0.1.0\n');
+      File(
+        '${temporary.path}/lib/src/version.dart',
+      ).writeAsStringSync("const okfPackageVersion = '0.1.0'; // stale\n");
+      File(
+        '${temporary.path}/README.md',
+      ).writeAsStringSync('uses: conceptadev/okf@v0.1.0\n');
+      File(
+        '${temporary.path}/CHANGELOG.md',
+      ).writeAsStringSync('## 1.2.3\n\n- Release.\n');
 
-    final update = await Process.run(
-      'dart',
-      <String>[
+      final update = await Process.run('dart', <String>[
         'run',
         'tool/ci/sync_release_version.dart',
         temporary.path,
-      ],
-    );
-    expect(update.exitCode, 0, reason: '${update.stderr}');
-    expect(
-      File('${temporary.path}/pubspec.yaml').readAsStringSync(),
-      contains('version: 1.2.3'),
-    );
-    expect(
-      File('${temporary.path}/lib/src/version.dart').readAsStringSync(),
-      contains("const okfPackageVersion = '1.2.3';"),
-    );
-    expect(
-      File('${temporary.path}/README.md').readAsStringSync(),
-      contains('conceptadev/okf@v1.2.3'),
-    );
+      ]);
+      expect(update.exitCode, 0, reason: '${update.stderr}');
+      expect(
+        File('${temporary.path}/pubspec.yaml').readAsStringSync(),
+        contains('version: 1.2.3'),
+      );
+      expect(
+        File('${temporary.path}/lib/src/version.dart').readAsStringSync(),
+        contains("const okfPackageVersion = '1.2.3';"),
+      );
+      expect(
+        File('${temporary.path}/README.md').readAsStringSync(),
+        contains('conceptadev/okf@v1.2.3'),
+      );
 
-    final check = await Process.run(
-      'dart',
-      <String>[
+      final check = await Process.run('dart', <String>[
         'run',
         'tool/ci/sync_release_version.dart',
         '--check',
         temporary.path,
-      ],
-    );
-    expect(check.exitCode, 0, reason: '${check.stderr}');
-  });
+      ]);
+      expect(check.exitCode, 0, reason: '${check.stderr}');
+    },
+  );
 
   test('cli_pkg release tooling isolates its effective SDK floor', () {
     final releasePubspecFile = File('tool/release/pubspec.yaml');
@@ -159,7 +154,7 @@ void main() {
     final releaseDevDependencies =
         releasePubspec['dev_dependencies'] as YamlMap;
 
-    expect((packagePubspec['environment'] as YamlMap)['sdk'], '>=3.4.0 <4.0.0');
+    expect((packagePubspec['environment'] as YamlMap)['sdk'], '>=3.9.0 <4.0.0');
     expect(releasePubspec['name'], 'okf_release');
     expect(releasePubspec['publish_to'], 'none');
     expect(releaseEnvironment['sdk'], '>=3.11.0 <4.0.0');
@@ -181,8 +176,9 @@ void main() {
   });
 
   test('release workflows use project deployment adapters', () {
-    final releaseSource =
-        File('.github/workflows/release.yml').readAsStringSync();
+    final releaseSource = File(
+      '.github/workflows/release.yml',
+    ).readAsStringSync();
     final releaseWorkflow = loadYaml(releaseSource) as YamlMap;
     final releaseJobs = releaseWorkflow['jobs'] as YamlMap;
     final verify = releaseJobs['verify'] as YamlMap;
@@ -229,8 +225,9 @@ void main() {
       ),
     );
 
-    final releaseTaskSource =
-        File('tool/release/grind.dart').readAsStringSync();
+    final releaseTaskSource = File(
+      'tool/release/grind.dart',
+    ).readAsStringSync();
     expect(
       releaseTaskSource,
       allOf(
@@ -272,10 +269,10 @@ void main() {
         loadYaml(File('.github/dependabot.yml').readAsStringSync()) as YamlMap;
     expect(
       (dependabot['updates'] as YamlList).cast<YamlMap>().any(
-            (update) =>
-                update['package-ecosystem'] == 'pub' &&
-                update['directory'] == '/tool/release',
-          ),
+        (update) =>
+            update['package-ecosystem'] == 'pub' &&
+            update['directory'] == '/tool/release',
+      ),
       true,
     );
   });
@@ -309,29 +306,29 @@ void main() {
     );
   });
 
-  group('supported runner behavior', () {
-    test('checkout is requested only for an empty workspace', () async {
-      final temporary = Directory.systemTemp.createTempSync('okf-workspace-');
-      addTearDown(() => temporary.deleteSync(recursive: true));
+  group(
+    'supported runner behavior',
+    () {
+      test('checkout is requested only for an empty workspace', () async {
+        final temporary = Directory.systemTemp.createTempSync('okf-workspace-');
+        addTearDown(() => temporary.deleteSync(recursive: true));
 
-      final empty = await _checkoutDecision(temporary.path);
-      expect(empty.exitCode, 0, reason: '${empty.stderr}');
-      expect((empty.stdout as String).trim(), 'true');
+        final empty = await _checkoutDecision(temporary.path);
+        expect(empty.exitCode, 0, reason: '${empty.stderr}');
+        expect((empty.stdout as String).trim(), 'true');
 
-      File('${temporary.path}/unrelated.txt').writeAsStringSync('unrelated');
-      final unsafe = await _checkoutDecision(temporary.path);
-      expect(unsafe.exitCode, 1);
+        File('${temporary.path}/unrelated.txt').writeAsStringSync('unrelated');
+        final unsafe = await _checkoutDecision(temporary.path);
+        expect(unsafe.exitCode, 1);
 
-      File('${temporary.path}/unrelated.txt').deleteSync();
-      expect(
-        (await Process.run('git', <String>['init'],
-                workingDirectory: temporary.path))
-            .exitCode,
-        0,
-      );
-      await Process.run(
-        'git',
-        <String>[
+        File('${temporary.path}/unrelated.txt').deleteSync();
+        expect(
+          (await Process.run('git', <String>[
+            'init',
+          ], workingDirectory: temporary.path)).exitCode,
+          0,
+        );
+        await Process.run('git', <String>[
           '-c',
           'user.name=OKF Test',
           '-c',
@@ -340,25 +337,24 @@ void main() {
           '--allow-empty',
           '-m',
           'fixture',
-        ],
-        workingDirectory: temporary.path,
-      );
-      File('${temporary.path}/generated.md').writeAsStringSync('generated');
-      final prepared = await _checkoutDecision(temporary.path);
-      expect(prepared.exitCode, 0, reason: '${prepared.stderr}');
-      expect((prepared.stdout as String).trim(), 'false');
-    });
+        ], workingDirectory: temporary.path);
+        File('${temporary.path}/generated.md').writeAsStringSync('generated');
+        final prepared = await _checkoutDecision(temporary.path);
+        expect(prepared.exitCode, 0, reason: '${prepared.stderr}');
+        expect((prepared.stdout as String).trim(), 'false');
+      });
 
-    test('downloaded engine receives exactly one validation invocation',
+      test(
+        'downloaded engine receives exactly one validation invocation',
         () async {
-      final temporary = Directory.systemTemp.createTempSync('okf-ci-gate-');
-      addTearDown(() => temporary.deleteSync(recursive: true));
-      final fakeBin = Directory('${temporary.path}/bin')..createSync();
-      final curlLog = File('${temporary.path}/curl.log');
-      final engineLog = File('${temporary.path}/engine.log');
-      final ghLog = File('${temporary.path}/gh.log');
-      final curl = File('${fakeBin.path}/curl')
-        ..writeAsStringSync('''#!/usr/bin/env bash
+          final temporary = Directory.systemTemp.createTempSync('okf-ci-gate-');
+          addTearDown(() => temporary.deleteSync(recursive: true));
+          final fakeBin = Directory('${temporary.path}/bin')..createSync();
+          final curlLog = File('${temporary.path}/curl.log');
+          final engineLog = File('${temporary.path}/engine.log');
+          final ghLog = File('${temporary.path}/gh.log');
+          final curl = File('${fakeBin.path}/curl')
+            ..writeAsStringSync('''#!/usr/bin/env bash
 set -euo pipefail
 while (( \$# )); do
   case "\$1" in
@@ -374,249 +370,238 @@ exit "\${FAKE_ENGINE_EXIT:-0}"
 ENGINE
 printf '%s\\n' "\$url" > "\$FAKE_CURL_LOG"
 ''');
-      final gh = File('${fakeBin.path}/gh')
-        ..writeAsStringSync('''#!/usr/bin/env bash
+          final gh = File('${fakeBin.path}/gh')
+            ..writeAsStringSync('''#!/usr/bin/env bash
 printf '%s\\n' "\$*" > "\$FAKE_GH_LOG"
 ''');
-      await Process.run('chmod', <String>['+x', curl.path, gh.path]);
-      final environment = <String, String>{
-        'PATH': '${fakeBin.path}:${Platform.environment['PATH']}',
-        'FAKE_CURL_LOG': curlLog.path,
-        'FAKE_ENGINE_LOG': engineLog.path,
-        'FAKE_GH_LOG': ghLog.path,
-      };
-      final engine = File('${temporary.path}/okf');
+          await Process.run('chmod', <String>['+x', curl.path, gh.path]);
+          final environment = <String, String>{
+            'PATH': '${fakeBin.path}:${Platform.environment['PATH']}',
+            'FAKE_CURL_LOG': curlLog.path,
+            'FAKE_ENGINE_LOG': engineLog.path,
+            'FAKE_GH_LOG': ghLog.path,
+          };
+          final engine = File('${temporary.path}/okf');
 
-      final install = await Process.run(
-        'bash',
-        <String>[
-          'tool/ci/install-engine.sh',
-          'v0.2.0',
-          'Linux',
-          'X64',
-          engine.path,
-        ],
-        environment: environment,
-      );
-      expect(install.exitCode, 0, reason: '${install.stderr}');
-      expect(
-        curlLog.readAsStringSync().trim(),
-        endsWith('/v0.2.0/okf-linux-x64'),
-      );
-      expect(
-        ghLog.readAsStringSync().trim(),
-        'release verify-asset v0.2.0 ${engine.path} '
-        '--repo conceptadev/okf',
+          final install = await Process.run('bash', <String>[
+            'tool/ci/install-engine.sh',
+            'v0.2.0',
+            'Linux',
+            'X64',
+            engine.path,
+          ], environment: environment);
+          expect(install.exitCode, 0, reason: '${install.stderr}');
+          expect(
+            curlLog.readAsStringSync().trim(),
+            endsWith('/v0.2.0/okf-linux-x64'),
+          );
+          expect(
+            ghLog.readAsStringSync().trim(),
+            'release verify-asset v0.2.0 ${engine.path} '
+            '--repo conceptadev/okf',
+          );
+
+          final validation = await Process.run('bash', <String>[
+            'tool/ci/validate-engine.sh',
+            engine.path,
+            'bundle with spaces',
+            'true',
+          ], environment: environment);
+          expect(validation.exitCode, 0, reason: '${validation.stderr}');
+          expect(engineLog.readAsLinesSync(), <String>[
+            'validate',
+            'bundle with spaces',
+            '--strict',
+          ]);
+
+          final invalidVersion = await Process.run('bash', <String>[
+            'tool/ci/install-engine.sh',
+            '../mutable',
+            'Linux',
+            'X64',
+            engine.path,
+          ], environment: environment);
+          expect(invalidVersion.exitCode, 2);
+        },
       );
 
-      final validation = await Process.run(
-        'bash',
-        <String>[
-          'tool/ci/validate-engine.sh',
-          engine.path,
-          'bundle with spaces',
-          'true',
-        ],
-        environment: environment,
-      );
-      expect(validation.exitCode, 0, reason: '${validation.stderr}');
-      expect(
-        engineLog.readAsLinesSync(),
-        <String>['validate', 'bundle with spaces', '--strict'],
-      );
-
-      final invalidVersion = await Process.run(
-        'bash',
-        <String>[
-          'tool/ci/install-engine.sh',
-          '../mutable',
-          'Linux',
-          'X64',
-          engine.path,
-        ],
-        environment: environment,
-      );
-      expect(invalidVersion.exitCode, 2);
-    });
-
-    test('validation script omits strict and propagates verdicts', () async {
-      final temporary = Directory.systemTemp.createTempSync('okf-ci-verdict-');
-      addTearDown(() => temporary.deleteSync(recursive: true));
-      final engineLog = File('${temporary.path}/engine.log');
-      final engine = File('${temporary.path}/okf')
-        ..writeAsStringSync('''#!/usr/bin/env bash
+      test('validation script omits strict and propagates verdicts', () async {
+        final temporary = Directory.systemTemp.createTempSync(
+          'okf-ci-verdict-',
+        );
+        addTearDown(() => temporary.deleteSync(recursive: true));
+        final engineLog = File('${temporary.path}/engine.log');
+        final engine = File('${temporary.path}/okf')
+          ..writeAsStringSync('''#!/usr/bin/env bash
 printf '%s\\n' "\$@" > "\$FAKE_ENGINE_LOG"
 exit "\${FAKE_ENGINE_EXIT:-0}"
 ''');
-      await Process.run('chmod', <String>['+x', engine.path]);
+        await Process.run('chmod', <String>['+x', engine.path]);
 
-      final result = await Process.run(
-        'bash',
-        <String>['tool/ci/validate-engine.sh', engine.path, '.', 'false'],
-        environment: <String, String>{
-          'FAKE_ENGINE_LOG': engineLog.path,
-          'FAKE_ENGINE_EXIT': '1',
-        },
-      );
-      expect(result.exitCode, 1);
-      expect(engineLog.readAsLinesSync(), <String>['validate', '.']);
-
-      final invalid = await Process.run(
-        'bash',
-        <String>['tool/ci/validate-engine.sh', engine.path, '.', 'sometimes'],
-      );
-      expect(invalid.exitCode, 2);
-    });
-
-    test('one platform manifest drives release and action assets', () async {
-      final platforms = _platforms();
-      final matrixResult = await Process.run(
-        'bash',
-        <String>['tool/ci/release-matrix.sh'],
-      );
-      expect(matrixResult.exitCode, 0, reason: '${matrixResult.stderr}');
-      final matrix =
-          jsonDecode(matrixResult.stdout as String) as Map<String, Object?>;
-      expect(
-        matrix['include'],
-        platforms
-            .map(
-              (platform) => <String, String>{
-                'os': platform.workflowRunner,
-                'asset': platform.asset,
-              },
-            )
-            .toList(),
-      );
-
-      for (final platform in platforms) {
-        final lookup = await Process.run(
+        final result = await Process.run(
           'bash',
-          <String>[
+          <String>['tool/ci/validate-engine.sh', engine.path, '.', 'false'],
+          environment: <String, String>{
+            'FAKE_ENGINE_LOG': engineLog.path,
+            'FAKE_ENGINE_EXIT': '1',
+          },
+        );
+        expect(result.exitCode, 1);
+        expect(engineLog.readAsLinesSync(), <String>['validate', '.']);
+
+        final invalid = await Process.run('bash', <String>[
+          'tool/ci/validate-engine.sh',
+          engine.path,
+          '.',
+          'sometimes',
+        ]);
+        expect(invalid.exitCode, 2);
+      });
+
+      test('one platform manifest drives release and action assets', () async {
+        final platforms = _platforms();
+        final matrixResult = await Process.run('bash', <String>[
+          'tool/ci/release-matrix.sh',
+        ]);
+        expect(matrixResult.exitCode, 0, reason: '${matrixResult.stderr}');
+        final matrix =
+            jsonDecode(matrixResult.stdout as String) as Map<String, Object?>;
+        expect(
+          matrix['include'],
+          platforms
+              .map(
+                (platform) => <String, String>{
+                  'os': platform.workflowRunner,
+                  'asset': platform.asset,
+                },
+              )
+              .toList(),
+        );
+
+        for (final platform in platforms) {
+          final lookup = await Process.run('bash', <String>[
             'tool/ci/platform-asset.sh',
             platform.runnerOs,
             platform.runnerArch,
-          ],
+          ]);
+          expect(lookup.exitCode, 0, reason: '${lookup.stderr}');
+          expect((lookup.stdout as String).trim(), platform.asset);
+        }
+      });
+
+      test('release workflow publishes every manifest asset', () async {
+        final source = File('.github/workflows/release.yml').readAsStringSync();
+        final workflow = loadYaml(source) as YamlMap;
+        final jobs = workflow['jobs'] as YamlMap;
+        final permissions = workflow['permissions'] as YamlMap;
+        final binaries = jobs['binaries'] as YamlMap;
+        final publishJob = jobs['publish'] as YamlMap;
+        final publishPermissions = publishJob['permissions'] as YamlMap;
+        final pubPublishJob = jobs['pub-publish'] as YamlMap;
+        final pubPublishPermissions = pubPublishJob['permissions'] as YamlMap;
+        expect(jobs, contains('ref'));
+        expect(permissions['contents'], 'read');
+        expect(publishPermissions['actions'], 'read');
+        expect(publishPermissions['contents'], 'write');
+        expect(pubPublishJob['needs'], 'publish');
+        expect(pubPublishPermissions['contents'], 'read');
+        expect(pubPublishPermissions['id-token'], 'write');
+        expect(binaries['needs'], <String>['platforms', 'verify']);
+        expect(source, isNot(contains('@v4')));
+        expect(source, isNot(contains('@v1')));
+        expect(source, contains('persist-credentials: false'));
+        expect(source, contains('release-matrix.sh'));
+        expect(
+          File('.pubignore').readAsLinesSync(),
+          contains('test/ci_gate_test.dart'),
         );
-        expect(lookup.exitCode, 0, reason: '${lookup.stderr}');
-        expect((lookup.stdout as String).trim(), platform.asset);
-      }
-    });
 
-    test('release workflow publishes every manifest asset', () async {
-      final source = File('.github/workflows/release.yml').readAsStringSync();
-      final workflow = loadYaml(source) as YamlMap;
-      final jobs = workflow['jobs'] as YamlMap;
-      final permissions = workflow['permissions'] as YamlMap;
-      final binaries = jobs['binaries'] as YamlMap;
-      final publishJob = jobs['publish'] as YamlMap;
-      final publishPermissions = publishJob['permissions'] as YamlMap;
-      final pubPublishJob = jobs['pub-publish'] as YamlMap;
-      final pubPublishPermissions = pubPublishJob['permissions'] as YamlMap;
-      expect(jobs, contains('ref'));
-      expect(permissions['contents'], 'read');
-      expect(publishPermissions['actions'], 'read');
-      expect(publishPermissions['contents'], 'write');
-      expect(pubPublishJob['needs'], 'publish');
-      expect(pubPublishPermissions['contents'], 'read');
-      expect(pubPublishPermissions['id-token'], 'write');
-      expect(binaries['needs'], <String>['platforms', 'verify']);
-      expect(source, isNot(contains('@v4')));
-      expect(source, isNot(contains('@v1')));
-      expect(source, contains('persist-credentials: false'));
-      expect(source, contains('release-matrix.sh'));
-      expect(
-        File('.pubignore').readAsLinesSync(),
-        contains('test/ci_gate_test.dart'),
-      );
-
-      final dependabot =
-          loadYaml(File('.github/dependabot.yml').readAsStringSync())
-              as YamlMap;
-      final actionUpdates =
-          (dependabot['updates'] as YamlList).cast<YamlMap>().singleWhere(
-                (update) => update['package-ecosystem'] == 'github-actions',
-              );
-      expect(actionUpdates['package-ecosystem'], 'github-actions');
-      expect(actionUpdates['directory'], '/');
-      expect((actionUpdates['schedule'] as YamlMap)['interval'], 'weekly');
-      expect(
-        (dependabot['updates'] as YamlList)
+        final dependabot =
+            loadYaml(File('.github/dependabot.yml').readAsStringSync())
+                as YamlMap;
+        final actionUpdates = (dependabot['updates'] as YamlList)
             .cast<YamlMap>()
-            .any((update) => update['package-ecosystem'] == 'npm'),
-        true,
-      );
-      final temporary = Directory.systemTemp.createTempSync('okf-release-');
-      addTearDown(() => temporary.deleteSync(recursive: true));
-      final distribution = Directory('${temporary.path}/dist')..createSync();
-      for (final platform in _platforms()) {
-        File('${distribution.path}/${platform.asset}')
-            .writeAsStringSync('asset');
-      }
-      final fakeBin = Directory('${temporary.path}/bin')..createSync();
-      final ghLog = File('${temporary.path}/gh.log');
-      final gh = File('${fakeBin.path}/gh')
-        ..writeAsStringSync('''#!/usr/bin/env bash
+            .singleWhere(
+              (update) => update['package-ecosystem'] == 'github-actions',
+            );
+        expect(actionUpdates['package-ecosystem'], 'github-actions');
+        expect(actionUpdates['directory'], '/');
+        expect((actionUpdates['schedule'] as YamlMap)['interval'], 'weekly');
+        expect(
+          (dependabot['updates'] as YamlList).cast<YamlMap>().any(
+            (update) => update['package-ecosystem'] == 'npm',
+          ),
+          true,
+        );
+        final temporary = Directory.systemTemp.createTempSync('okf-release-');
+        addTearDown(() => temporary.deleteSync(recursive: true));
+        final distribution = Directory('${temporary.path}/dist')..createSync();
+        for (final platform in _platforms()) {
+          File(
+            '${distribution.path}/${platform.asset}',
+          ).writeAsStringSync('asset');
+        }
+        final fakeBin = Directory('${temporary.path}/bin')..createSync();
+        final ghLog = File('${temporary.path}/gh.log');
+        final gh = File('${fakeBin.path}/gh')
+          ..writeAsStringSync('''#!/usr/bin/env bash
 printf '%s\\n' "\$*" >> "\$FAKE_GH_LOG"
 [[ "\$1" == api ]] && { printf 'true\\n'; exit 0; }
 [[ "\$1 \$2" == 'release view' ]] && exit 1
 exit 0
 ''');
-      await Process.run('chmod', <String>['+x', gh.path]);
+        await Process.run('chmod', <String>['+x', gh.path]);
 
-      final publish = await Process.run(
-        'bash',
-        <String>['tool/ci/publish-release.sh', 'v0.2.0', distribution.path],
-        environment: <String, String>{
-          'PATH': '${fakeBin.path}:${Platform.environment['PATH']}',
-          'FAKE_GH_LOG': ghLog.path,
-          'GH_REPO': 'conceptadev/okf',
-        },
-      );
-      expect(publish.exitCode, 0, reason: '${publish.stderr}');
-      final calls = ghLog.readAsStringSync();
-      expect(
-        calls,
-        contains(
-          'api repos/conceptadev/okf/releases/tags/v0.2.0 '
-          '--jq .immutable',
-        ),
-      );
-      expect(calls, contains('release create v0.2.0'));
-      expect(calls, contains('release edit v0.2.0 --draft=false'));
-      for (final platform in _platforms()) {
-        expect(calls, contains(platform.asset));
-      }
-    });
+        final publish = await Process.run(
+          'bash',
+          <String>['tool/ci/publish-release.sh', 'v0.2.0', distribution.path],
+          environment: <String, String>{
+            'PATH': '${fakeBin.path}:${Platform.environment['PATH']}',
+            'FAKE_GH_LOG': ghLog.path,
+            'GH_REPO': 'conceptadev/okf',
+          },
+        );
+        expect(publish.exitCode, 0, reason: '${publish.stderr}');
+        final calls = ghLog.readAsStringSync();
+        expect(
+          calls,
+          contains(
+            'api repos/conceptadev/okf/releases/tags/v0.2.0 '
+            '--jq .immutable',
+          ),
+        );
+        expect(calls, contains('release create v0.2.0'));
+        expect(calls, contains('release edit v0.2.0 --draft=false'));
+        for (final platform in _platforms()) {
+          expect(calls, contains(platform.asset));
+        }
+      });
 
-    test('CI shell scripts parse as Bash', () async {
-      final scripts = Directory('tool/ci')
-          .listSync()
-          .whereType<File>()
-          .where((file) => file.path.endsWith('.sh'))
-          .map((file) => file.path)
-          .toList();
-      final result = await Process.run('bash', <String>['-n', ...scripts]);
-      expect(result.exitCode, 0, reason: '${result.stderr}');
-    });
-  }, skip: Platform.isWindows ? 'the action has no Windows binary' : false);
+      test('CI shell scripts parse as Bash', () async {
+        final scripts = Directory('tool/ci')
+            .listSync()
+            .whereType<File>()
+            .where((file) => file.path.endsWith('.sh'))
+            .map((file) => file.path)
+            .toList();
+        final result = await Process.run('bash', <String>['-n', ...scripts]);
+        expect(result.exitCode, 0, reason: '${result.stderr}');
+      });
+    },
+    skip: Platform.isWindows ? 'the action has no Windows binary' : false,
+  );
 }
 
-Future<ProcessResult> _checkoutDecision(String workspace) => Process.run(
-      'bash',
-      <String>['tool/ci/needs-checkout.sh', workspace],
-    );
+Future<ProcessResult> _checkoutDecision(String workspace) =>
+    Process.run('bash', <String>['tool/ci/needs-checkout.sh', workspace]);
 
 List<
-    ({
-      String runnerOs,
-      String runnerArch,
-      String workflowRunner,
-      String asset,
-    })> _platforms() => File('tool/ci/platforms.tsv')
-        .readAsLinesSync()
-        .where((line) => line.isNotEmpty && !line.startsWith('#'))
-        .map((line) {
+  ({String runnerOs, String runnerArch, String workflowRunner, String asset})
+>
+_platforms() => File('tool/ci/platforms.tsv')
+    .readAsLinesSync()
+    .where((line) => line.isNotEmpty && !line.startsWith('#'))
+    .map((line) {
       final fields = line.split('\t');
       return (
         runnerOs: fields[0],
@@ -624,4 +609,5 @@ List<
         workflowRunner: fields[2],
         asset: fields[3],
       );
-    }).toList();
+    })
+    .toList();

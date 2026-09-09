@@ -22,9 +22,7 @@ void main() {
         ),
       },
       indexes: <String, String>{'index.md': '# Old\n* [Old](old.md)\n'},
-      logs: <String, String>{
-        'log.md': '# Log\n## 2026-07-27\n* Update\n',
-      },
+      logs: <String, String>{'log.md': '# Log\n## 2026-07-27\n* Update\n'},
     );
 
     final generated = const OkfIndexGenerator().generate(bundle);
@@ -44,7 +42,9 @@ void main() {
       lessThan(generated['tables/index.md']!.indexOf('[users]')),
     );
     expect(
-        generated['métricas/index.md'], contains('receita%20l%C3%ADquida.md'));
+      generated['métricas/index.md'],
+      contains('receita%20l%C3%ADquida.md'),
+    );
 
     final root = generated['index.md']!;
     expect(root, isNot(contains('log.md')));
@@ -129,11 +129,7 @@ okf_version: " 0.2 "
   });
 }
 
-OkfDocument _document(
-  String type, {
-  String? title,
-  String? description,
-}) =>
+OkfDocument _document(String type, {String? title, String? description}) =>
     OkfDocument(
       frontmatter: <String, Object?>{
         'type': type,

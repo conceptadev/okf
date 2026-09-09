@@ -9,7 +9,7 @@ import 'yaml_limits.dart';
 /// booleans, and dates. Map keys must be supported scalar values. Cyclic and
 /// unsupported values, excessive nesting, and excessive collection sizes are
 /// rejected with [ArgumentError].
-Map<String, Object?> deepUnmodifiableJsonMap(Map<String, Object?> source) {
+Map<String, Object?> snapshotYamlMap(Map<String, Object?> source) {
   final state = _SnapshotState();
   return state._copyStringMap(source);
 }

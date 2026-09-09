@@ -27,10 +27,10 @@ final class OkfBundleLoadResult {
     required Map<String, String> logs,
     required Iterable<String> assets,
     required this.report,
-  })  : documents = UnmodifiableMapView<String, OkfDocument>(Map.of(documents)),
-        indexes = UnmodifiableMapView<String, String>(Map.of(indexes)),
-        logs = UnmodifiableMapView<String, String>(Map.of(logs)),
-        assets = List<String>.unmodifiable(assets);
+  }) : documents = UnmodifiableMapView<String, OkfDocument>(Map.of(documents)),
+       indexes = UnmodifiableMapView<String, String>(Map.of(indexes)),
+       logs = UnmodifiableMapView<String, String>(Map.of(logs)),
+       assets = List<String>.unmodifiable(assets);
 
   /// The normalized, absolute bundle root.
   final String rootPath;
@@ -64,8 +64,7 @@ final class OkfBundleLoadResult {
       ...logs.keys,
       ...assets,
       ...report.findings.map((finding) => finding.location?.path).nonNulls,
-    }.toList()
-      ..sort();
+    }.toList()..sort();
     return List<String>.unmodifiable(result);
   }
 
@@ -146,10 +145,7 @@ final class OkfBundleLoader {
     final entities = <_BundleEntry>[];
 
     await for (final entity in root.list(recursive: true, followLinks: false)) {
-      final type = await FileSystemEntity.type(
-        entity.path,
-        followLinks: false,
-      );
+      final type = await FileSystemEntity.type(entity.path, followLinks: false);
       if (type != FileSystemEntityType.file) {
         continue;
       }
@@ -236,10 +232,7 @@ final class OkfBundleLoader {
     }
 
     final root = Directory(p.normalize(p.absolute(rootPath)));
-    final type = await FileSystemEntity.type(
-      root.path,
-      followLinks: false,
-    );
+    final type = await FileSystemEntity.type(root.path, followLinks: false);
     if (type == FileSystemEntityType.link) {
       throw FileSystemException(
         'Bundle root must not be a symbolic link',
@@ -247,10 +240,7 @@ final class OkfBundleLoader {
       );
     }
     if (type != FileSystemEntityType.directory) {
-      throw FileSystemException(
-        'Bundle root is not a directory',
-        root.path,
-      );
+      throw FileSystemException('Bundle root is not a directory', root.path);
     }
     return root;
   }

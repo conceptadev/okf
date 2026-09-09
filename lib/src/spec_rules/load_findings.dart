@@ -10,13 +10,11 @@ import 'rule.dart';
 /// a bundle. Loading code therefore mints them directly instead of pretending
 /// they are executable bundle rules.
 final List<OkfSpecFindingDefinition> loadFindingDefinitions =
-    List<OkfSpecFindingDefinition>.unmodifiable(
-  <OkfSpecFindingDefinition>[
-    invalidDocumentFinding,
-    invalidPathFinding,
-    invalidUtf8Finding,
-  ],
-);
+    List<OkfSpecFindingDefinition>.unmodifiable(<OkfSpecFindingDefinition>[
+      invalidDocumentFinding,
+      invalidPathFinding,
+      invalidUtf8Finding,
+    ]);
 
 /// `okf/invalid-document`: a Markdown document whose frontmatter or body
 /// could not be parsed.

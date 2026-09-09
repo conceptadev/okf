@@ -27,6 +27,8 @@ implementation and is not affiliated with or endorsed by Google.
 
 ## Install
 
+Requires Dart 3.9 or later.
+
 Add the library:
 
 ```console
@@ -103,6 +105,10 @@ Inputs:
 Releases attach an `okf-linux-x64` and an `okf-macos-arm64` binary, so the
 action runs on Linux and macOS runners.
 
+The Dart library and CLI are tested on Linux and Windows with Dart 3.9 and
+the current stable SDK. Windows support does not include this composite
+action or a prebuilt release binary; install the CLI through Dart on Windows.
+
 ## MCP server
 
 `okf mcp <bundle>` serves a Model Context Protocol surface over stdio, so a
@@ -127,6 +133,8 @@ and inputs — the same finding IDs, locations, and severities — and `strict`
 is the `--warnings-as-errors` flag, so an agent can
 reproduce the CI gate's judgment before pushing. Arguments are validated
 against each tool's schema; rejected arguments come back as a tool error.
+Invalid concept IDs identify the offending argument and the path rule it
+violates, so an agent can correct the call.
 
 ### Writes
 
@@ -316,6 +324,47 @@ Writes do not preserve platform-specific ACLs or extended attributes.
 The package models Attested Computation contracts but does not execute
 computations or attesters. Google Cloud enrichment, Gemini orchestration,
 web crawling, and the reference HTML viewer are outside this package.
+
+## Development
+
+MCP inputs use Ack's `@AckInfer()` schemas in `lib/src/mcp/inputs.dart`.
+The schema defines both runtime parsing and the JSON Schema advertised to
+clients. Schema-first generation preserves the distinction between omitted
+arguments and explicit nulls, including partial updates. Graph queries use
+a runtime Ack codec around the existing `OkfGraphQuery` API. Spec validation
+and tolerant YAML metadata keep their own contracts.
+
+Concept-ID codecs keep strings on the wire and decode through `OkfConceptId`.
+The advertised JSON Schema describes their string shape; runtime parsing
+enforces the domain's path rules. MCP and graph-query errors share a formatter
+that preserves nested field paths and reasons without producing an OKF Report.
+
+Inferring these optional inputs from nullable Dart fields with `@AckModel()`
+would also permit explicit nulls. Their wire contract therefore remains the
+source of truth through `@AckInfer()`.
+
+After changing an input schema, regenerate and commit both Ack parts:
+
+```console
+dart pub get
+dart run build_runner build
+dart analyze --fatal-infos
+dart test
+```
+
+CI runs the same check the following command runs:
+
+```console
+dart run tool/ci/check_generated.dart
+```
+
+The command regenerates the inputs and compares them with the parts committed
+at `HEAD`. It checks committed artifacts, so it fails while a regenerated part
+is only staged or still untracked. Commit both parts, then run it. Use
+`dart run build_runner build` alone while developing the change.
+
+Generated models belong to the MCP implementation and are not exported from
+the public OKF libraries.
 
 ## License
 

@@ -28,13 +28,10 @@ One row per order.
       );
       expect(document.type, 'BigQuery Table');
       expect(document.tags, <String>['sales', 'orders']);
-      expect(
-        document.frontmatter['custom'],
-        <Object?, Object?>{
-          'enabled': true,
-          'weights': <Object?>[1, 2],
-        },
-      );
+      expect(document.frontmatter['custom'], <Object?, Object?>{
+        'enabled': true,
+        'weights': <Object?>[1, 2],
+      });
       expect(document.body, startsWith('# Customer Orders'));
       expect(document.body, endsWith('\n'));
     });
@@ -68,7 +65,10 @@ One row per order.
         throwsA(
           isA<OkfDocumentException>()
               .having(
-                  (error) => error.message, 'message', contains('Unterminated'))
+                (error) => error.message,
+                'message',
+                contains('Unterminated'),
+              )
               .having(
                 (error) => error.sourcePath,
                 'sourcePath',
@@ -185,10 +185,7 @@ One row per order.
       );
       expect(
         () => OkfDocument(
-          frontmatter: <String, Object?>{
-            'type': 'Reference',
-            'cyclic': cyclic,
-          },
+          frontmatter: <String, Object?>{'type': 'Reference', 'cyclic': cyclic},
         ).serialize(),
         throwsA(isA<OkfYamlEncodeException>()),
       );
@@ -264,23 +261,20 @@ Body.
 ''',
       );
 
-      expect(
-        document.legacyCitations,
-        <OkfLegacyCitation>[
-          const OkfLegacyCitation(
-            number: 1,
-            title: 'Policy',
-            target: 'https://example.com/policy',
-            raw: '[1] [Policy](https://example.com/policy)',
-          ),
-          const OkfLegacyCitation(
-            number: 2,
-            title: 'Runbook',
-            target: '../references/runbook.md',
-            raw: '[2] [Runbook](../references/runbook.md)',
-          ),
-        ],
-      );
+      expect(document.legacyCitations, <OkfLegacyCitation>[
+        const OkfLegacyCitation(
+          number: 1,
+          title: 'Policy',
+          target: 'https://example.com/policy',
+          raw: '[1] [Policy](https://example.com/policy)',
+        ),
+        const OkfLegacyCitation(
+          number: 2,
+          title: 'Runbook',
+          target: '../references/runbook.md',
+          raw: '[2] [Runbook](../references/runbook.md)',
+        ),
+      ]);
       expect(document.hasLegacyCitations, isTrue);
       expect(document.citations, document.legacyCitations);
     });

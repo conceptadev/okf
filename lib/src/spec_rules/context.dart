@@ -35,13 +35,11 @@ final class SpecValidationContext {
     required List<ParsedIndexDocument> indexDocuments,
     required List<ParsedLogDocument> logDocuments,
     required List<InvalidReservedDocument> invalidDocuments,
-  })  : indexDocuments = List<ParsedIndexDocument>.unmodifiable(
-          indexDocuments,
-        ),
-        logDocuments = List<ParsedLogDocument>.unmodifiable(logDocuments),
-        invalidDocuments = List<InvalidReservedDocument>.unmodifiable(
-          invalidDocuments,
-        );
+  }) : indexDocuments = List<ParsedIndexDocument>.unmodifiable(indexDocuments),
+       logDocuments = List<ParsedLogDocument>.unmodifiable(logDocuments),
+       invalidDocuments = List<InvalidReservedDocument>.unmodifiable(
+         invalidDocuments,
+       );
 
   final OkfBundle bundle;
   final List<ParsedIndexDocument> indexDocuments;

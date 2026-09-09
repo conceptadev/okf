@@ -114,12 +114,7 @@ final class OkfYamlEmitter {
     if (value is Iterable && value is! String) {
       state.enter(value);
       try {
-        _writeSequence(
-          output,
-          value,
-          indentation: indentation,
-          state: state,
-        );
+        _writeSequence(output, value, indentation: indentation, state: state);
       } finally {
         state.exit(value);
       }
@@ -150,12 +145,7 @@ final class OkfYamlEmitter {
           ..writeln(_collectionOrScalar(value));
       } else {
         output.writeln();
-        _writeNode(
-          output,
-          value,
-          indentation: indentation + 2,
-          state: state,
-        );
+        _writeNode(output, value, indentation: indentation + 2, state: state);
       }
     }
   }
@@ -177,12 +167,7 @@ final class OkfYamlEmitter {
           ..writeln(_collectionOrScalar(value));
       } else {
         output.writeln();
-        _writeNode(
-          output,
-          value,
-          indentation: indentation + 2,
-          state: state,
-        );
+        _writeNode(output, value, indentation: indentation + 2, state: state);
       }
     }
   }

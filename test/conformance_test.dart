@@ -38,12 +38,16 @@ okf_version: "future"
     expect(validation.isConformant, isTrue);
     expect(
       validation.report.findings.map((finding) => finding.id.value),
-      everyElement(isNot(anyOf(
-        'okf/missing-frontmatter',
-        'okf/missing-type',
-        'okf/invalid-reserved-document',
-        'okf/invalid-index-structure',
-      ))),
+      everyElement(
+        isNot(
+          anyOf(
+            'okf/missing-frontmatter',
+            'okf/missing-type',
+            'okf/invalid-reserved-document',
+            'okf/invalid-index-structure',
+          ),
+        ),
+      ),
     );
     expect(
       validation.report.findings.map((finding) => finding.id.value),

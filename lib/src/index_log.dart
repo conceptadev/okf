@@ -126,9 +126,9 @@ final class OkfIndexParseResult {
     required List<OkfIndexIssue> issues,
     required this.okfVersion,
     required bool preservesFrontmatter,
-  })  : entries = List<OkfIndexEntry>.unmodifiable(entries),
-        issues = List<OkfIndexIssue>.unmodifiable(issues),
-        _preservesFrontmatter = preservesFrontmatter;
+  }) : entries = List<OkfIndexEntry>.unmodifiable(entries),
+       issues = List<OkfIndexIssue>.unmodifiable(issues),
+       _preservesFrontmatter = preservesFrontmatter;
 
   /// Recognized entries in document order.
   final List<OkfIndexEntry> entries;
@@ -157,9 +157,9 @@ final class OkfLogParseResult {
     required List<OkfLogEntry> entries,
     required List<OkfLogIssue> issues,
     required bool preservesFrontmatter,
-  })  : entries = List<OkfLogEntry>.unmodifiable(entries),
-        issues = List<OkfLogIssue>.unmodifiable(issues),
-        _preservesFrontmatter = preservesFrontmatter;
+  }) : entries = List<OkfLogEntry>.unmodifiable(entries),
+       issues = List<OkfLogIssue>.unmodifiable(issues),
+       _preservesFrontmatter = preservesFrontmatter;
 
   /// The parsed level-one title, empty when none was recognized.
   final String title;
@@ -195,10 +195,10 @@ final class OkfIndexDocument {
   OkfIndexDocument({
     required Iterable<OkfIndexEntry> entries,
     String? okfVersion,
-  })  : entries = List<OkfIndexEntry>.unmodifiable(
-          _canonicalWritableIndexEntries(entries),
-        ),
-        okfVersion = _declaredVersion(okfVersion);
+  }) : entries = List<OkfIndexEntry>.unmodifiable(
+         _canonicalWritableIndexEntries(entries),
+       ),
+       okfVersion = _declaredVersion(okfVersion);
 
   /// Parses a complete index file, frontmatter included.
   ///
@@ -211,7 +211,8 @@ final class OkfIndexDocument {
       entries: scan.entries,
       issues: scan.issues,
       okfVersion: declared is String ? declared : null,
-      preservesFrontmatter: !document.hasFrontmatter ||
+      preservesFrontmatter:
+          !document.hasFrontmatter ||
           document.frontmatter.length == 1 &&
               declared is String &&
               declared.trim().isNotEmpty,
@@ -268,10 +269,10 @@ final class OkfLogDocument {
   OkfLogDocument({
     required String title,
     required Iterable<OkfLogEntry> entries,
-  })  : title = _canonicalWritableLogTitle(title),
-        entries = List<OkfLogEntry>.unmodifiable(
-          _canonicalWritableLogEntries(entries),
-        );
+  }) : title = _canonicalWritableLogTitle(title),
+       entries = List<OkfLogEntry>.unmodifiable(
+         _canonicalWritableLogEntries(entries),
+       );
 
   /// Parses a complete log file.
   ///
@@ -376,7 +377,7 @@ final class OkfLogDocument {
 }
 
 ({String title, List<OkfLogEntry> entries, List<OkfLogIssue> issues})
-    _scanLogBody(String body) {
+_scanLogBody(String body) {
   final entries = <OkfLogEntry>[];
   final issues = <OkfLogIssue>[];
   var title = '';
@@ -534,11 +535,11 @@ String _unescapeHeading(String value) => value.replaceAll(r'\#', '#');
 /// Only the characters a plain destination cannot carry are encoded;
 /// existing percent escapes keep their CommonMark URL meaning.
 String _encodeAngleDestination(String value) => value.replaceAllMapped(
-      okfLinkDestinationUnsafe,
-      (match) =>
-          _destinationEscapes[match.group(0)] ??
-          Uri.encodeComponent(match.group(0)!),
-    );
+  okfLinkDestinationUnsafe,
+  (match) =>
+      _destinationEscapes[match.group(0)] ??
+      Uri.encodeComponent(match.group(0)!),
+);
 
 /// `Uri.encodeComponent` leaves parentheses unescaped, so the destination
 /// characters it cannot be trusted with carry their escapes here.
@@ -552,8 +553,8 @@ const Map<String, String> _destinationEscapes = <String, String>{
 };
 
 String _escapeLinkLabel(String value) => _singleLine(
-      value,
-    ).replaceAll(r'\', r'\\').replaceAll('[', r'\[').replaceAll(']', r'\]');
+  value,
+).replaceAll(r'\', r'\\').replaceAll('[', r'\[').replaceAll(']', r'\]');
 
 String _unescapeLinkLabel(String value) =>
     value.replaceAllMapped(_escapedCharacter, (match) => match.group(1)!);
@@ -603,9 +604,7 @@ String _canonicalWritableLogTitle(String title) {
   return normalized;
 }
 
-List<OkfLogEntry> _canonicalWritableLogEntries(
-  Iterable<OkfLogEntry> entries,
-) {
+List<OkfLogEntry> _canonicalWritableLogEntries(Iterable<OkfLogEntry> entries) {
   final source = entries.toList(growable: false);
   if (source.isEmpty) {
     throw ArgumentError.value(entries, 'entries', 'Must not be empty');
@@ -622,11 +621,7 @@ List<OkfLogEntry> _canonicalWritableLogEntries(
       );
     }
     if (action.contains('**:')) {
-      throw ArgumentError.value(
-        entry,
-        'entries',
-        'Action cannot contain **:',
-      );
+      throw ArgumentError.value(entry, 'entries', 'Action cannot contain **:');
     }
     if (description.isEmpty ||
         (action.isEmpty && _actionPrefix.hasMatch(description))) {
@@ -637,19 +632,13 @@ List<OkfLogEntry> _canonicalWritableLogEntries(
       );
     }
     canonical.add(
-      OkfLogEntry(
-        date: entry.date,
-        action: action,
-        description: description,
-      ),
+      OkfLogEntry(date: entry.date, action: action, description: description),
     );
   }
   final byDate = _groupBy(canonical, (entry) => entry.date);
   final newestFirst = byDate.keys.toList()
     ..sort((left, right) => right.compareTo(left));
-  return <OkfLogEntry>[
-    for (final date in newestFirst) ...byDate[date]!,
-  ];
+  return <OkfLogEntry>[for (final date in newestFirst) ...byDate[date]!];
 }
 
 final RegExp _lineBreak = RegExp(r'\r?\n');

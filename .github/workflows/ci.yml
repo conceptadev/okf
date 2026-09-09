@@ -11,11 +11,12 @@ permissions:
 
 jobs:
   test:
+    name: Dart ${{ matrix.sdk }} on ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        sdk: ["3.4.0", stable]
+        sdk: ["3.9.0", stable]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -25,6 +26,8 @@ jobs:
         with:
           sdk: ${{ matrix.sdk }}
       - run: dart pub get
+      - name: Verify generated inputs are current
+        run: dart run tool/ci/check_generated.dart
       - run: >-
           dart format --output=none --set-exit-if-changed
           bin example lib test tool/ci tool/generate_case_folding.dart

@@ -74,20 +74,20 @@ void main() {
         );
 
     expect(finding(line: 3, column: 1), finding(line: 3, column: 1));
-    expect(finding(line: 3, column: 1).hashCode,
-        finding(line: 3, column: 1).hashCode);
+    expect(
+      finding(line: 3, column: 1).hashCode,
+      finding(line: 3, column: 1).hashCode,
+    );
     expect(finding(line: 3), isNot(finding(line: 4)));
     expect(finding(path: 'b.md'), isNot(finding()));
     expect('${finding()}', 'a.md: error okf/sample: Sample.');
     expect('${finding(line: 3)}', 'a.md:3: error okf/sample: Sample.');
-    expect('${finding(line: 3, column: 1)}',
-        'a.md:3:1: error okf/sample: Sample.');
     expect(
-      '${OkfFinding(
-        id: OkfFindingId.okf('sample'),
-        severity: OkfFindingSeverity.advisory,
-        message: 'Sample.',
-      )}',
+      '${finding(line: 3, column: 1)}',
+      'a.md:3:1: error okf/sample: Sample.',
+    );
+    expect(
+      '${OkfFinding(id: OkfFindingId.okf('sample'), severity: OkfFindingSeverity.advisory, message: 'Sample.')}',
       'advisory okf/sample: Sample.',
     );
     expect(finding(line: 3).toJson(), <String, Object?>{
@@ -162,15 +162,14 @@ void main() {
       int? line,
       int? column,
       OkfFindingSeverity severity = OkfFindingSeverity.error,
-    }) =>
-        OkfFinding(
-          id: OkfFindingId.parse(id),
-          severity: severity,
-          message: message,
-          location: path == null
-              ? null
-              : OkfFindingLocation(path: path, line: line, column: column),
-        );
+    }) => OkfFinding(
+      id: OkfFindingId.parse(id),
+      severity: severity,
+      message: message,
+      location: path == null
+          ? null
+          : OkfFindingLocation(path: path, line: line, column: column),
+    );
     final findings = <OkfFinding>[
       finding('okf/b-rule', 'Late file.', path: 'b.md'),
       finding('okf/no-location', 'No location.'),

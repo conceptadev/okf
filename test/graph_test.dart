@@ -38,9 +38,7 @@ See [the café](tables/caf%C3%A9.md), [missing](missing.md),
             'type': 'Attested Computation',
             'runtime': 'bigquery',
             'computation': '../references/revenue.sql',
-            'executor': <String, Object?>{
-              'resource': '../references/run.md',
-            },
+            'executor': <String, Object?>{'resource': '../references/run.md'},
             'attester': <String, Object?>{
               'resource': '../references/attest.py',
             },
@@ -93,8 +91,7 @@ See [the café](tables/caf%C3%A9.md), [missing](missing.md),
     expect(graph.toMermaid(), contains('missing.md'));
   });
 
-  test(
-      'resolves raw non-ASCII targets against the bundle instead of '
+  test('resolves raw non-ASCII targets against the bundle instead of '
       'crashing', () {
     final bundle = OkfBundle.fromDocuments(
       <String, OkfDocument>{
@@ -158,8 +155,7 @@ See [the café](tables/caf%C3%A9.md), [missing](missing.md),
     expect(decoded.resolvedPath, 'references/a b.txt');
   });
 
-  test(
-      'classifies prose source descriptors as descriptors even when they '
+  test('classifies prose source descriptors as descriptors even when they '
       'contain slashes', () {
     // Verbatim sources[].resource descriptors from the first real
     // migration's QA corpus.
@@ -214,9 +210,9 @@ See [the café](tables/caf%C3%A9.md), [missing](missing.md),
   });
 
   test('checked-in JSON schema matches the graph wire contract', () async {
-    final schema = jsonDecode(
-      await File('schemas/graph-v1.schema.json').readAsString(),
-    ) as Map<String, Object?>;
+    final schema =
+        jsonDecode(await File('schemas/graph-v1.schema.json').readAsString())
+            as Map<String, Object?>;
     final properties = schema['properties']! as Map<String, Object?>;
     final definitions = schema[r'$defs']! as Map<String, Object?>;
     final nodeSchema = definitions['node']! as Map<String, Object?>;
@@ -318,10 +314,9 @@ See [the café](tables/caf%C3%A9.md), [missing](missing.md),
       query: OkfGraphQuery(pathPrefixes: const <String>['analytics']),
     );
 
-    expect(
-      graph.nodes.map((node) => node.id.value),
-      <String>['analytics/primary'],
-    );
+    expect(graph.nodes.map((node) => node.id.value), <String>[
+      'analytics/primary',
+    ]);
   });
 
   test('filters a graph through the exported query vocabulary', () {
@@ -348,16 +343,14 @@ See [the café](tables/caf%C3%A9.md), [missing](missing.md),
       query: OkfGraphQuery(
         conceptTypes: const <String>['Metric'],
         pathPrefixes: const <String>['analytics/'],
-        resolutions: const <OkfGraphResolution>[
-          OkfGraphResolution.unresolved,
-        ],
+        resolutions: const <OkfGraphResolution>[OkfGraphResolution.unresolved],
       ),
     );
 
-    expect(
-      graph.nodes.map((node) => node.id.value),
-      <String>['analytics/peer', 'analytics/primary'],
-    );
+    expect(graph.nodes.map((node) => node.id.value), <String>[
+      'analytics/peer',
+      'analytics/primary',
+    ]);
     expect(graph.edges, hasLength(1));
     expect(graph.edges.single.rawTarget, 'missing.md');
     expect(graph.toDot(), contains('missing.md'));
@@ -367,12 +360,10 @@ See [the café](tables/caf%C3%A9.md), [missing](missing.md),
   test('owns the machine-readable query vocabulary', () {
     final properties =
         OkfGraphQuery.jsonSchema['properties']! as Map<String, Object?>;
-    expect(
-      properties.keys,
-      <String>['types', 'path_prefixes', 'resolutions'],
-    );
-    final resolutionItems = (properties['resolutions']!
-        as Map<String, Object?>)['items']! as Map<String, Object?>;
+    expect(properties.keys, <String>['types', 'path_prefixes', 'resolutions']);
+    final resolutionItems =
+        (properties['resolutions']! as Map<String, Object?>)['items']!
+            as Map<String, Object?>;
     expect(
       resolutionItems['enum'],
       OkfGraphResolution.values.map((resolution) => resolution.wireValue),
@@ -389,19 +380,13 @@ See [the café](tables/caf%C3%A9.md), [missing](missing.md),
     expect(query.resolutions, <OkfGraphResolution>{
       OkfGraphResolution.unresolved,
     });
-    expect(
-      query.toJson(),
-      <String, Object?>{
-        'types': <String>['Metric'],
-        'path_prefixes': <String>['analytics/'],
-        'resolutions': <String>['unresolved'],
-      },
-    );
+    expect(query.toJson(), <String, Object?>{
+      'types': <String>['Metric'],
+      'path_prefixes': <String>['analytics/'],
+      'resolutions': <String>['unresolved'],
+    });
     expect(query.toJson().keys, properties.keys);
-    expect(
-      OkfGraphQuery.fromJson(query.toJson()).toJson(),
-      query.toJson(),
-    );
+    expect(OkfGraphQuery.fromJson(query.toJson()).toJson(), query.toJson());
     expect(
       () => OkfGraphQuery.fromJson(<String, Object?>{
         'resolutions': <String>['unknown'],
@@ -417,6 +402,97 @@ See [the café](tables/caf%C3%A9.md), [missing](missing.md),
       throwsArgumentError,
     );
   });
+
+  test(
+    'query parsing rejects malformed fields without changing Set semantics',
+    () {
+      for (final input in <Map<String, Object?>>[
+        {'unknown': true},
+        {'types': null},
+        {'types': 'Metric'},
+        {
+          'types': <Object?>[42],
+        },
+        {
+          'types': <Object?>[null],
+        },
+        {
+          'types': <String>[''],
+        },
+        {
+          'types': <String>['Metric', 'Metric'],
+        },
+        {
+          'path_prefixes': <String>['area', 'area'],
+        },
+        {
+          'resolutions': <String>['external', 'external'],
+        },
+        {
+          'resolutions': <String>['unknown'],
+        },
+      ]) {
+        expect(
+          () => OkfGraphQuery.fromJson(input),
+          throwsFormatException,
+          reason: '$input',
+        );
+      }
+
+      final types = <String>['Metric'];
+      final query = OkfGraphQuery.fromJson({'types': types});
+      types.add('Reference');
+      expect(query.conceptTypes, <String>{'Metric'});
+      expect(() => query.conceptTypes.add('Note'), throwsUnsupportedError);
+      expect(query.toJson(), {
+        'types': <String>['Metric'],
+        'path_prefixes': <String>[],
+        'resolutions': <String>[],
+      });
+      expect(
+        OkfGraphQuery(conceptTypes: ['Metric', 'Metric']).conceptTypes,
+        <String>{'Metric'},
+      );
+      expect(
+        OkfGraphQuery.fromJson({
+          'types': <String>[' '],
+        }).conceptTypes,
+        <String>{' '},
+      );
+    },
+  );
+
+  test(
+    'invalid graph queries identify nested fields and retain their source',
+    () {
+      final input = <String, Object?>{
+        'types': [42],
+        'path_prefixes': [''],
+        'unknown': true,
+      };
+      expect(
+        () => OkfGraphQuery.fromJson(input),
+        throwsA(
+          isA<FormatException>()
+              .having((error) => error.source, 'source', same(input))
+              .having(
+                (error) => error.message,
+                'message',
+                allOf([
+                  startsWith('Invalid graph query:'),
+                  contains('#/types/0:'),
+                  contains('Expected string'),
+                  contains('#/path_prefixes/0:'),
+                  contains('Minimum 1'),
+                  contains('#/unknown:'),
+                  contains('not allowed'),
+                  isNot(contains('One or more nested schemas')),
+                ]),
+              ),
+        ),
+      );
+    },
+  );
 
   test('an empty query preserves every default projection', () {
     final bundle = OkfBundle.fromDocuments(<String, OkfDocument>{

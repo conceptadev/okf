@@ -34,8 +34,7 @@ final class OkfBundleChangeApplier {
   Future<OkfBundlePreparation> prepare(
     String rootPath,
     OkfBundleChangeSet changes,
-  ) =>
-      _prepare(rootPath, changes);
+  ) => _prepare(rootPath, changes);
 
   /// Commits exactly the bytes bound into [prepared].
   Future<OkfBundleCommitResult> commit(OkfPreparedChange prepared) =>
@@ -53,17 +52,16 @@ final class OkfBundleChangeApplier {
   Future<OkfBundleApplication> apply(
     String rootPath,
     OkfBundleChangeSet changes,
-  ) =>
-      OkfBundleLock.write(rootPath, () async {
-        final preparation = await _prepare(rootPath, changes);
-        return switch (preparation) {
-          OkfPreparationReady(prepared: final prepared) => OkfBundleApplied(
-              result: await _commitLocked(prepared),
-            ),
-          OkfPreparationRefused(validation: final validation) =>
-            OkfBundleApplicationRefused(validation: validation),
-        };
-      });
+  ) => OkfBundleLock.write(rootPath, () async {
+    final preparation = await _prepare(rootPath, changes);
+    return switch (preparation) {
+      OkfPreparationReady(prepared: final prepared) => OkfBundleApplied(
+        result: await _commitLocked(prepared),
+      ),
+      OkfPreparationRefused(validation: final validation) =>
+        OkfBundleApplicationRefused(validation: validation),
+    };
+  });
 
   Future<OkfBundleCommitResult> _commitLocked(
     OkfPreparedChange prepared,
@@ -257,10 +255,10 @@ final class OkfPreparedCandidate {
     required Map<String, String> indexes,
     required Map<String, String> logs,
     required Set<String> assets,
-  })  : concepts = Map<String, String>.unmodifiable(concepts),
-        indexes = Map<String, String>.unmodifiable(indexes),
-        logs = Map<String, String>.unmodifiable(logs),
-        assets = Set<String>.unmodifiable(assets);
+  }) : concepts = Map<String, String>.unmodifiable(concepts),
+       indexes = Map<String, String>.unmodifiable(indexes),
+       logs = Map<String, String>.unmodifiable(logs),
+       assets = Set<String>.unmodifiable(assets);
 
   final Map<String, String> concepts;
   final Map<String, String> indexes;
@@ -268,14 +266,14 @@ final class OkfPreparedCandidate {
   final Set<String> assets;
 
   OkfBundle toBundle() => OkfBundle.fromDocuments(
-        <String, OkfDocument>{
-          for (final entry in concepts.entries)
-            entry.key: OkfDocument.parse(entry.value, sourcePath: entry.key),
-        },
-        indexes: indexes,
-        logs: logs,
-        assets: assets,
-      );
+    <String, OkfDocument>{
+      for (final entry in concepts.entries)
+        entry.key: OkfDocument.parse(entry.value, sourcePath: entry.key),
+    },
+    indexes: indexes,
+    logs: logs,
+    assets: assets,
+  );
 }
 
 /// Opaque proof that an exact candidate passed OKF Spec validation.
@@ -311,7 +309,7 @@ final class OkfPreparationReady extends OkfBundlePreparation {
 
 final class OkfBundleCommitResult {
   OkfBundleCommitResult({required Iterable<String> changedPaths})
-      : changedPaths = List<String>.unmodifiable(changedPaths);
+    : changedPaths = List<String>.unmodifiable(changedPaths);
 
   final List<String> changedPaths;
 }
@@ -398,8 +396,8 @@ Future<_BundleSnapshot> _snapshot(
         retainedText[relative] = bytes;
         fingerprints[relative] = sha256.convert(bytes).toString();
       } else {
-        fingerprints[relative] =
-            (await sha256.bind(file.openRead()).first).toString();
+        fingerprints[relative] = (await sha256.bind(file.openRead()).first)
+            .toString();
       }
     } else if (type == FileSystemEntityType.link) {
       fingerprints['$_linkFingerprintPrefix$relative'] = sha256
@@ -416,9 +414,8 @@ Future<_BundleSnapshot> _snapshot(
 
 const String _linkFingerprintPrefix = '@link:';
 
-String _portablePathKey(String path) => unorm.nfd(
-      unorm.nfd(path).runes.map(_caseFoldRune).join(),
-    );
+String _portablePathKey(String path) =>
+    unorm.nfd(unorm.nfd(path).runes.map(_caseFoldRune).join());
 
 String _caseFoldRune(int rune) =>
     _caseFoldMappings[rune] ?? String.fromCharCode(rune);
@@ -428,8 +425,8 @@ final class _BundleSnapshot {
     required this.rootPath,
     required Map<String, String> fingerprints,
     required Map<String, List<int>> retainedText,
-  })  : fingerprints = Map<String, String>.unmodifiable(fingerprints),
-        retainedText = Map<String, List<int>>.unmodifiable(retainedText);
+  }) : fingerprints = Map<String, String>.unmodifiable(fingerprints),
+       retainedText = Map<String, List<int>>.unmodifiable(retainedText);
 
   final String rootPath;
   final Map<String, String> fingerprints;
@@ -441,10 +438,10 @@ final class _BundleSnapshot {
   }
 
   _BundleSnapshot withoutText() => _BundleSnapshot(
-        rootPath: rootPath,
-        fingerprints: fingerprints,
-        retainedText: const <String, List<int>>{},
-      );
+    rootPath: rootPath,
+    fingerprints: fingerprints,
+    retainedText: const <String, List<int>>{},
+  );
 
   bool sameContent(_BundleSnapshot other) {
     if (fingerprints.length != other.fingerprints.length) {

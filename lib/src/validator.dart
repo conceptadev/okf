@@ -8,18 +8,15 @@ import 'spec_rules/reserved_rules.dart';
 import 'spec_rules/rule.dart';
 
 final List<OkfSpecRule> _validationRules = List<OkfSpecRule>.unmodifiable(
-  <OkfSpecRule>[
-    ...conceptRules,
-    ...reservedRules,
-  ],
+  <OkfSpecRule>[...conceptRules, ...reservedRules],
 );
 
 /// Read-only metadata for the complete fixed OKF Spec finding set.
 final List<OkfSpecRuleDescriptor> okfSpecRuleDescriptors =
     List<OkfSpecRuleDescriptor>.unmodifiable(<OkfSpecRuleDescriptor>[
-  ...loadFindingDefinitions.map((definition) => definition.descriptor),
-  ..._validationRules.map((rule) => rule.descriptor),
-]);
+      ...loadFindingDefinitions.map((definition) => definition.descriptor),
+      ..._validationRules.map((rule) => rule.descriptor),
+    ]);
 
 /// Checks the pinned OKF v0.2 requirements with a fixed internal rule set.
 final class OkfSpecValidator {

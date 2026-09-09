@@ -15,21 +15,20 @@ Future<void> writeConcept(
   String title = 'Alpha',
   String body = '# Alpha',
   List<String> frontmatter = const <String>[],
-}) =>
-    writeBundleFile(
-      root,
-      relativePath,
-      <String>[
-        '---',
-        if (includeType) 'type: $type',
-        'title: $title',
-        ...frontmatter,
-        '---',
-        '',
-        body,
-        '',
-      ].join('\n'),
-    );
+}) => writeBundleFile(
+  root,
+  relativePath,
+  <String>[
+    '---',
+    if (includeType) 'type: $type',
+    'title: $title',
+    ...frontmatter,
+    '---',
+    '',
+    body,
+    '',
+  ].join('\n'),
+);
 
 /// Writes [content] at the bundle-relative [relativePath] under [root].
 Future<void> writeBundleFile(

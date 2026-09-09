@@ -13,9 +13,9 @@ void main(List<String> arguments) {
   }
 
   final root = Directory(remaining.isEmpty ? '.' : remaining.single);
-  final packageJson = jsonDecode(
-    File('${root.path}/package.json').readAsStringSync(),
-  ) as Map<String, Object?>;
+  final packageJson =
+      jsonDecode(File('${root.path}/package.json').readAsStringSync())
+          as Map<String, Object?>;
   final version = packageJson['version'];
   if (version is! String || !RegExp(r'^\d+\.\d+\.\d+$').hasMatch(version)) {
     stderr.writeln('okf: package.json must contain a stable version');
@@ -51,7 +51,8 @@ void main(List<String> arguments) {
 
   final changelog = File('${root.path}/CHANGELOG.md').readAsStringSync();
   if (!RegExp(
-    '^## ${RegExp.escape(version)}' r'(?:\s|$)',
+    '^## ${RegExp.escape(version)}'
+    r'(?:\s|$)',
     multiLine: true,
   ).hasMatch(changelog)) {
     stderr.writeln('okf: CHANGELOG.md has no $version entry');

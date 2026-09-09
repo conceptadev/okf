@@ -63,11 +63,11 @@ final class OkfBundleLock {
     try {
       lock = await _acquire(root.path, exclusive: exclusive);
       Future<T> runAction() => runZoned(
-            action,
-            zoneValues: <Object, Object>{
-              _zoneKey: _HeldClaim(key: root.key, exclusive: exclusive),
-            },
-          );
+        action,
+        zoneValues: <Object, Object>{
+          _zoneKey: _HeldClaim(key: root.key, exclusive: exclusive),
+        },
+      );
       if (exclusive || lock != null) {
         return await runAction();
       }
@@ -100,10 +100,7 @@ final class OkfBundleLock {
   }
 }
 
-Future<_HeldLock?> _acquire(
-  String rootPath, {
-  required bool exclusive,
-}) async {
+Future<_HeldLock?> _acquire(String rootPath, {required bool exclusive}) async {
   if (await FileSystemEntity.type(rootPath, followLinks: false) !=
       FileSystemEntityType.directory) {
     return null;
@@ -112,24 +109,18 @@ Future<_HeldLock?> _acquire(
   final path = p.join(rootPath, okfBundleLockFileName);
   final initialType = await FileSystemEntity.type(path, followLinks: false);
   if (initialType == FileSystemEntityType.link) {
-    throw FileSystemException(
-      'Bundle lock must not be a symbolic link',
-      path,
-    );
+    throw FileSystemException('Bundle lock must not be a symbolic link', path);
   }
   if (initialType != FileSystemEntityType.notFound &&
       initialType != FileSystemEntityType.file) {
-    throw FileSystemException(
-      'Bundle lock must be a regular file',
-      path,
-    );
+    throw FileSystemException('Bundle lock must be a regular file', path);
   }
 
   final RandomAccessFile file;
   try {
-    file = await File(path).open(
-      mode: exclusive ? FileMode.append : FileMode.read,
-    );
+    file = await File(
+      path,
+    ).open(mode: exclusive ? FileMode.append : FileMode.read);
   } on FileSystemException catch (error) {
     if (!exclusive &&
         initialType == FileSystemEntityType.notFound &&

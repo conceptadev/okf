@@ -76,7 +76,7 @@ enum OkfLifecycleStatus {
 /// A date range framing one or more source usage counts.
 final class OkfUsageWindow {
   OkfUsageWindow._(Map<String, Object?> raw)
-      : raw = UnmodifiableMapView<String, Object?>(raw);
+    : raw = UnmodifiableMapView<String, Object?>(raw);
 
   /// Attempts to read a usage window from a YAML value.
   static OkfUsageWindow? tryParse(Object? value) {
@@ -103,7 +103,7 @@ final class OkfUsageWindow {
 /// A material from which an OKF concept was derived.
 final class OkfSource {
   OkfSource._(Map<String, Object?> raw)
-      : raw = UnmodifiableMapView<String, Object?>(raw);
+    : raw = UnmodifiableMapView<String, Object?>(raw);
 
   /// Attempts to read a source entry from a YAML value.
   static OkfSource? tryParse(Object? value) {
@@ -149,7 +149,7 @@ final class OkfSource {
 /// How the current content was generated.
 final class OkfGeneration {
   OkfGeneration._(Map<String, Object?> raw)
-      : raw = UnmodifiableMapView<String, Object?>(raw);
+    : raw = UnmodifiableMapView<String, Object?>(raw);
 
   /// Attempts to read a `generated` mapping.
   static OkfGeneration? tryParse(Object? value) {
@@ -173,7 +173,7 @@ final class OkfGeneration {
 /// An event that confirmed a concept against its source or resource.
 final class OkfVerification {
   OkfVerification._(Map<String, Object?> raw)
-      : raw = UnmodifiableMapView<String, Object?>(raw);
+    : raw = UnmodifiableMapView<String, Object?>(raw);
 
   /// Attempts to read a verification event mapping.
   static OkfVerification? tryParse(Object? value) {
@@ -214,7 +214,7 @@ final class OkfVerification {
 /// One declared, runtime-specific computation parameter.
 final class OkfComputationParameter {
   OkfComputationParameter._(Map<String, Object?> raw)
-      : raw = UnmodifiableMapView<String, Object?>(raw);
+    : raw = UnmodifiableMapView<String, Object?>(raw);
 
   /// Attempts to read a parameter mapping.
   static OkfComputationParameter? tryParse(Object? value) {
@@ -242,7 +242,7 @@ final class OkfComputationParameter {
 /// Instructions for running an Attested Computation.
 final class OkfExecutor {
   OkfExecutor._(Map<String, Object?> raw)
-      : raw = UnmodifiableMapView<String, Object?>(raw);
+    : raw = UnmodifiableMapView<String, Object?>(raw);
 
   /// Attempts to read an executor mapping.
   static OkfExecutor? tryParse(Object? value) {
@@ -263,7 +263,7 @@ final class OkfExecutor {
 /// The deterministic check for an Attested Computation receipt.
 final class OkfAttester {
   OkfAttester._(Map<String, Object?> raw)
-      : raw = UnmodifiableMapView<String, Object?>(raw);
+    : raw = UnmodifiableMapView<String, Object?>(raw);
 
   /// Attempts to read an attester mapping.
   static OkfAttester? tryParse(Object? value) {
@@ -310,9 +310,9 @@ final class OkfComputationContract {
 final class OkfMetadata {
   /// Creates a typed view over [frontmatter].
   OkfMetadata.fromFrontmatter(Map<String, Object?> frontmatter)
-      : raw = UnmodifiableMapView<String, Object?>(
-          LinkedHashMap<String, Object?>.of(frontmatter),
-        );
+    : raw = UnmodifiableMapView<String, Object?>(
+        LinkedHashMap<String, Object?>.of(frontmatter),
+      );
 
   /// The complete frontmatter mapping, including unknown extension fields.
   final Map<String, Object?> raw;
@@ -479,8 +479,8 @@ final class OkfMetadata {
 
   /// Producer-defined top-level keys in insertion order.
   List<String> get extensionKeys => List<String>.unmodifiable(
-        raw.keys.where((key) => !okfKnownFrontmatterKeys.contains(key)),
-      );
+    raw.keys.where((key) => !okfKnownFrontmatterKeys.contains(key)),
+  );
 }
 
 Map<String, Object?>? _stringMap(Object? value) {

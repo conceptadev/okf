@@ -20,16 +20,13 @@ void main() {
       expect(metadata.resource, 'https://example.com/policy');
       expect(metadata.tags, <String>['governance', '2026']);
       expect(metadata.extensionKeys, <String>['x-owner', 'x-settings']);
-      expect(
-        metadata.raw['x-settings'],
-        <String, Object?>{'visible': true},
-      );
+      expect(metadata.raw['x-settings'], <String, Object?>{'visible': true});
     });
 
     test('coerces a scalar type for permissive consumption', () {
-      final metadata = OkfMetadata.fromFrontmatter(
-        <String, Object?>{'type': 42},
-      );
+      final metadata = OkfMetadata.fromFrontmatter(<String, Object?>{
+        'type': 42,
+      });
 
       expect(metadata.type, '42');
     });
@@ -50,55 +47,54 @@ void main() {
       expect(metadata.trustTier.wireValue, 'human-reviewed');
     });
 
-    test('derives all three trust tiers and ignores malformed list entries',
-        () {
-      expect(
-        OkfMetadata.fromFrontmatter(const <String, Object?>{}).trustTier,
-        OkfTrustTier.unverified,
-      );
-      expect(
-        OkfMetadata.fromFrontmatter(<String, Object?>{
-          'verified': <Object?>[
-            'malformed',
-            <String, Object?>{
-              'by': 'process:nightly',
-              'at': '2026-07-20T09:00:00Z',
-            },
-          ],
-        }).trustTier,
-        OkfTrustTier.machineConfirmed,
-      );
-      expect(
-        OkfMetadata.fromFrontmatter(<String, Object?>{
-          'verified': <Object?>[
-            <String, Object?>{
-              'by': 'team:data-platform',
-              'at': '2026-07-20T09:00:00Z',
-            },
-            <String, Object?>{
-              'by': 'human:reviewer',
-              'at': '2026-07-21T09:00:00Z',
-            },
-          ],
-        }).trustTier,
-        OkfTrustTier.humanReviewed,
-      );
-    });
+    test(
+      'derives all three trust tiers and ignores malformed list entries',
+      () {
+        expect(
+          OkfMetadata.fromFrontmatter(const <String, Object?>{}).trustTier,
+          OkfTrustTier.unverified,
+        );
+        expect(
+          OkfMetadata.fromFrontmatter(<String, Object?>{
+            'verified': <Object?>[
+              'malformed',
+              <String, Object?>{
+                'by': 'process:nightly',
+                'at': '2026-07-20T09:00:00Z',
+              },
+            ],
+          }).trustTier,
+          OkfTrustTier.machineConfirmed,
+        );
+        expect(
+          OkfMetadata.fromFrontmatter(<String, Object?>{
+            'verified': <Object?>[
+              <String, Object?>{
+                'by': 'team:data-platform',
+                'at': '2026-07-20T09:00:00Z',
+              },
+              <String, Object?>{
+                'by': 'human:reviewer',
+                'at': '2026-07-21T09:00:00Z',
+              },
+            ],
+          }).trustTier,
+          OkfTrustTier.humanReviewed,
+        );
+      },
+    );
 
     test('does not raise trust for structurally unusable events', () {
       for (final verified in <Object?>[
         <String, Object?>{},
         <String, Object?>{'by': 'process:nightly'},
-        <String, Object?>{
-          'by': 'human:',
-          'at': '2026-07-20T09:00:00Z',
-        },
+        <String, Object?>{'by': 'human:', 'at': '2026-07-20T09:00:00Z'},
         <String, Object?>{'by': 'human:reviewer', 'at': 'not-a-date'},
       ]) {
         expect(
-          OkfMetadata.fromFrontmatter(
-            <String, Object?>{'verified': verified},
-          ).trustTier,
+          OkfMetadata.fromFrontmatter(<String, Object?>{
+            'verified': verified,
+          }).trustTier,
           OkfTrustTier.unverified,
           reason: '$verified',
         );
@@ -113,10 +109,7 @@ void main() {
             'by': 'process:first',
             'at': '2026-07-20T09:00:00Z',
           },
-          <String, Object?>{
-            'by': 'human:last',
-            'at': '2026-07-21T09:00:00Z',
-          },
+          <String, Object?>{'by': 'human:last', 'at': '2026-07-21T09:00:00Z'},
         ],
       });
 
@@ -131,17 +124,17 @@ void main() {
         OkfLifecycleStatus.stable,
       );
 
-      final unknown = OkfMetadata.fromFrontmatter(
-        <String, Object?>{'status': 'archived'},
-      );
+      final unknown = OkfMetadata.fromFrontmatter(<String, Object?>{
+        'status': 'archived',
+      });
       expect(unknown.status, OkfLifecycleStatus.unknown);
       expect(unknown.rawStatus, 'archived');
     });
 
     test('becomes stale on the boundary date', () {
-      final metadata = OkfMetadata.fromFrontmatter(
-        <String, Object?>{'stale_after': '2026-09-23'},
-      );
+      final metadata = OkfMetadata.fromFrontmatter(<String, Object?>{
+        'stale_after': '2026-09-23',
+      });
 
       expect(metadata.isStale(DateTime(2026, 9, 22, 23, 59)), isFalse);
       expect(metadata.isStale(DateTime(2026, 9, 23)), isTrue);
@@ -150,12 +143,12 @@ void main() {
     });
 
     test('treats an invalid date as not stale', () {
-      final invalidText = OkfMetadata.fromFrontmatter(
-        <String, Object?>{'stale_after': 'not-a-date'},
-      );
-      final invalidCalendar = OkfMetadata.fromFrontmatter(
-        <String, Object?>{'stale_after': '2026-02-31'},
-      );
+      final invalidText = OkfMetadata.fromFrontmatter(<String, Object?>{
+        'stale_after': 'not-a-date',
+      });
+      final invalidCalendar = OkfMetadata.fromFrontmatter(<String, Object?>{
+        'stale_after': '2026-02-31',
+      });
 
       expect(invalidText.isStale(DateTime(2030)), isFalse);
       expect(invalidCalendar.isStale(DateTime(2030)), isFalse);
@@ -173,26 +166,20 @@ void main() {
       });
 
       expect(metadata.generated?.by, 'reference_agent/gemini');
-      expect(
-        metadata.contentChangedAt,
-        DateTime.parse('2026-07-21T12:30:00Z'),
-      );
+      expect(metadata.contentChangedAt, DateTime.parse('2026-07-21T12:30:00Z'));
       expect(metadata.legacyTimestamp, '2020-01-01T00:00:00Z');
     });
 
     test('falls back only when generated is absent', () {
-      final legacy = OkfMetadata.fromFrontmatter(
-        <String, Object?>{'timestamp': '2026-07-19T08:00:00Z'},
-      );
+      final legacy = OkfMetadata.fromFrontmatter(<String, Object?>{
+        'timestamp': '2026-07-19T08:00:00Z',
+      });
       final generatedWithoutAt = OkfMetadata.fromFrontmatter(<String, Object?>{
         'generated': <String, Object?>{'by': 'process:writer'},
         'timestamp': '2026-07-19T08:00:00Z',
       });
 
-      expect(
-        legacy.contentChangedAt,
-        DateTime.parse('2026-07-19T08:00:00Z'),
-      );
+      expect(legacy.contentChangedAt, DateTime.parse('2026-07-19T08:00:00Z'));
       expect(generatedWithoutAt.contentChangedAt, isNull);
     });
   });
@@ -284,18 +271,20 @@ void main() {
       expect(contract?.parameters.first.name, 'year');
       expect(contract?.parameters.first.required, isTrue);
       expect(contract?.computation, 'references/revenue.sql');
-      expect(
-        contract?.executor?.receipt,
-        <String>['job_id', 'executed_sql', 'result'],
-      );
+      expect(contract?.executor?.receipt, <String>[
+        'job_id',
+        'executed_sql',
+        'result',
+      ]);
       expect(contract?.attester?.resource, 'references/attest.py');
       expect(contract?.attester?.raw['language'], 'python');
     });
 
     test('does not reinterpret similarly named fields on another type', () {
-      final metadata = OkfMetadata.fromFrontmatter(
-        <String, Object?>{'type': 'Metric', 'runtime': 'bigquery'},
-      );
+      final metadata = OkfMetadata.fromFrontmatter(<String, Object?>{
+        'type': 'Metric',
+        'runtime': 'bigquery',
+      });
 
       expect(metadata.runtime, 'bigquery');
       expect(metadata.computationContract, isNull);

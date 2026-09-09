@@ -23,9 +23,7 @@ void main() {
 
   group('OkfBundleLoader', () {
     test('loads a sorted inventory without following links', () async {
-      final root = await Directory(
-        p.join(sandbox.path, 'bundle'),
-      ).create();
+      final root = await Directory(p.join(sandbox.path, 'bundle')).create();
       await _write(
         root,
         'zeta.md',
@@ -44,9 +42,7 @@ void main() {
         final outside = await File(
           p.join(sandbox.path, 'outside.md'),
         ).writeAsString('---\ntype: Reference\n---\n');
-        await Link(
-          p.join(root.path, 'linked.md'),
-        ).create(outside.path);
+        await Link(p.join(root.path, 'linked.md')).create(outside.path);
       }
 
       final result = await const OkfBundleLoader().inspect(root.path);
@@ -56,14 +52,8 @@ void main() {
         orderedEquals(<String>['nested/alpha.md', 'zeta.md']),
       );
       expect(result.indexes.keys, orderedEquals(<String>['index.md']));
-      expect(
-        result.logs.keys,
-        orderedEquals(<String>['nested/log.md']),
-      );
-      expect(
-        result.assets,
-        orderedEquals(<String>['assets/query.sql']),
-      );
+      expect(result.logs.keys, orderedEquals(<String>['nested/log.md']));
+      expect(result.assets, orderedEquals(<String>['assets/query.sql']));
       expect(
         result.paths,
         orderedEquals(<String>[
@@ -79,60 +69,51 @@ void main() {
       expect(result.hasFindings, isFalse);
     });
 
-    test('reports every malformed concept and returns a partial bundle',
-        () async {
-      final root = await Directory(
-        p.join(sandbox.path, 'bundle'),
-      ).create();
-      await _write(
-        root,
-        'valid.md',
-        '---\ntype: Reference\n---\n\nValid\n',
-      );
-      await _write(
-        root,
-        'broken.md',
-        '---\ntype: Reference\nunterminated: [\n',
-      );
-      final invalidUtf8 = File(p.join(root.path, 'invalid.md'));
-      await invalidUtf8.writeAsBytes(<int>[0xff], flush: true);
+    test(
+      'reports every malformed concept and returns a partial bundle',
+      () async {
+        final root = await Directory(p.join(sandbox.path, 'bundle')).create();
+        await _write(root, 'valid.md', '---\ntype: Reference\n---\n\nValid\n');
+        await _write(
+          root,
+          'broken.md',
+          '---\ntype: Reference\nunterminated: [\n',
+        );
+        final invalidUtf8 = File(p.join(root.path, 'invalid.md'));
+        await invalidUtf8.writeAsBytes(<int>[0xff], flush: true);
 
-      final result = await const OkfBundleLoader().inspect(root.path);
+        final result = await const OkfBundleLoader().inspect(root.path);
 
-      expect(result.bundle.concepts.length, 1);
-      expect(
-        result.report.findings.map((finding) => finding.location?.path),
-        orderedEquals(<String>['broken.md', 'invalid.md']),
-      );
-      expect(
-        result.report.findings.map((finding) => finding.id.value),
-        orderedEquals(<String>[
-          'okf/invalid-document',
-          'okf/invalid-utf8',
-        ]),
-      );
-      expect(result.report.findings.first.location?.line, isNotNull);
-      expect(result.report.findings.first.location?.column, isNotNull);
-      expect(
-        result.paths,
-        containsAll(<String>['broken.md', 'invalid.md', 'valid.md']),
-      );
-      await expectLater(
-        const OkfBundleLoader().load(root.path),
-        throwsA(
-          isA<OkfBundleLoadException>().having(
-            (error) => error.result.report.findings.length,
-            'finding count',
-            2,
+        expect(result.bundle.concepts.length, 1);
+        expect(
+          result.report.findings.map((finding) => finding.location?.path),
+          orderedEquals(<String>['broken.md', 'invalid.md']),
+        );
+        expect(
+          result.report.findings.map((finding) => finding.id.value),
+          orderedEquals(<String>['okf/invalid-document', 'okf/invalid-utf8']),
+        );
+        expect(result.report.findings.first.location?.line, isNotNull);
+        expect(result.report.findings.first.location?.column, isNotNull);
+        expect(
+          result.paths,
+          containsAll(<String>['broken.md', 'invalid.md', 'valid.md']),
+        );
+        await expectLater(
+          const OkfBundleLoader().load(root.path),
+          throwsA(
+            isA<OkfBundleLoadException>().having(
+              (error) => error.result.report.findings.length,
+              'finding count',
+              2,
+            ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
 
     test('validate merges load findings with fixed Spec findings', () async {
-      final root = await Directory(
-        p.join(sandbox.path, 'bundle'),
-      ).create();
+      final root = await Directory(p.join(sandbox.path, 'bundle')).create();
       await _write(root, 'valid.md', '---\ntype: Reference\n---\n\nValid\n');
       await _write(root, 'broken.md', '---\ntype: Reference\nbad: [\n');
       await _write(root, 'untyped.md', '---\ntitle: Untyped\n---\n');
@@ -143,10 +124,7 @@ void main() {
 
       expect(
         report.findings.map((finding) => '${finding.id}'),
-        orderedEquals(<String>[
-          'okf/invalid-document',
-          'okf/missing-type',
-        ]),
+        orderedEquals(<String>['okf/invalid-document', 'okf/missing-type']),
       );
       expect(report.findings.last.location?.path, 'untyped.md');
       expect(validation.isConformant, isFalse);
@@ -154,9 +132,7 @@ void main() {
     });
 
     test('reports bundle paths containing C1 control characters', () async {
-      final root = await Directory(
-        p.join(sandbox.path, 'bundle'),
-      ).create();
+      final root = await Directory(p.join(sandbox.path, 'bundle')).create();
       const invalidPath = 'invalid\u0085asset.txt';
       await _write(root, invalidPath, 'invalid path\n');
 
@@ -172,12 +148,8 @@ void main() {
       if (Platform.isWindows) {
         return;
       }
-      final root = await Directory(
-        p.join(sandbox.path, 'real'),
-      ).create();
-      final link = await Link(
-        p.join(sandbox.path, 'linked'),
-      ).create(root.path);
+      final root = await Directory(p.join(sandbox.path, 'real')).create();
+      final link = await Link(p.join(sandbox.path, 'linked')).create(root.path);
 
       await expectLater(
         const OkfBundleLoader().inspect(link.path),
@@ -200,18 +172,13 @@ void main() {
     });
 
     test('writes deterministically and supports non-mutating checks', () async {
-      final root = await Directory(
-        p.join(sandbox.path, 'bundle'),
-      ).create();
+      final root = await Directory(p.join(sandbox.path, 'bundle')).create();
       const writer = OkfBundleWriter();
 
-      final first = await writer.writeAll(
-        root.path,
-        <String, String>{
-          'zeta.md': 'zeta\n',
-          'nested/alpha.md': 'alpha\n',
-        },
-      );
+      final first = await writer.writeAll(root.path, <String, String>{
+        'zeta.md': 'zeta\n',
+        'nested/alpha.md': 'alpha\n',
+      });
       expect(
         first.changedPaths,
         orderedEquals(<String>['nested/alpha.md', 'zeta.md']),
@@ -221,28 +188,20 @@ void main() {
         'alpha\n',
       );
 
-      final unchanged = await writer.writeAll(
-        root.path,
-        <String, String>{'zeta.md': 'zeta\n'},
-        checkOnly: true,
-      );
+      final unchanged = await writer.writeAll(root.path, <String, String>{
+        'zeta.md': 'zeta\n',
+      }, checkOnly: true);
       expect(unchanged.hasChanges, isFalse);
 
-      final check = await writer.writeAll(
-        root.path,
-        <String, String>{'zeta.md': 'changed\n'},
-        checkOnly: true,
-      );
+      final check = await writer.writeAll(root.path, <String, String>{
+        'zeta.md': 'changed\n',
+      }, checkOnly: true);
       expect(check.changedPaths, orderedEquals(<String>['zeta.md']));
-      expect(
-        await File(p.join(root.path, 'zeta.md')).readAsString(),
-        'zeta\n',
-      );
+      expect(await File(p.join(root.path, 'zeta.md')).readAsString(), 'zeta\n');
 
-      await writer.writeAll(
-        root.path,
-        <String, String>{'zeta.md': 'changed\n'},
-      );
+      await writer.writeAll(root.path, <String, String>{
+        'zeta.md': 'changed\n',
+      });
       expect(
         await File(p.join(root.path, 'zeta.md')).readAsString(),
         'changed\n',
@@ -250,23 +209,16 @@ void main() {
       expect(
         await root
             .list(recursive: true, followLinks: false)
-            .where(
-              (entity) => p.basename(entity.path).contains('.okf-'),
-            )
+            .where((entity) => p.basename(entity.path).contains('.okf-'))
             .isEmpty,
         isTrue,
       );
     });
 
     test('writes serialized documents', () async {
-      final root = await Directory(
-        p.join(sandbox.path, 'bundle'),
-      ).create();
+      final root = await Directory(p.join(sandbox.path, 'bundle')).create();
       final document = OkfDocument(
-        frontmatter: <String, Object?>{
-          'type': 'Reference',
-          'title': 'Example',
-        },
+        frontmatter: <String, Object?>{'type': 'Reference', 'title': 'Example'},
         body: '# Example\n',
       );
 
@@ -284,21 +236,16 @@ void main() {
     });
 
     test('transactional writes restore the exact original bytes', () async {
-      final root = await Directory(
-        p.join(sandbox.path, 'bundle'),
-      ).create();
+      final root = await Directory(p.join(sandbox.path, 'bundle')).create();
       final original = File(p.join(root.path, 'a.md'));
       await original.writeAsBytes(<int>[0xff], flush: true);
       await Directory(p.join(root.path, 'z.md')).create();
 
       await expectLater(
-        const OkfBundleWriteTransaction().writeAll(
-          root.path,
-          <String, String>{
-            'a.md': 'changed\n',
-            'z.md': 'cannot replace a directory\n',
-          },
-        ),
+        const OkfBundleWriteTransaction().writeAll(root.path, <String, String>{
+          'a.md': 'changed\n',
+          'z.md': 'cannot replace a directory\n',
+        }),
         throwsA(isA<FileSystemException>()),
       );
 
@@ -306,23 +253,17 @@ void main() {
     });
 
     test('rejects absolute and escaping paths', () async {
-      final root = await Directory(
-        p.join(sandbox.path, 'bundle'),
-      ).create();
+      final root = await Directory(p.join(sandbox.path, 'bundle')).create();
       const writer = OkfBundleWriter();
 
       await expectLater(
-        writer.writeAll(
-          root.path,
-          <String, String>{'../escape.md': 'no'},
-        ),
+        writer.writeAll(root.path, <String, String>{'../escape.md': 'no'}),
         throwsA(isA<ArgumentError>()),
       );
       await expectLater(
-        writer.writeAll(
-          root.path,
-          <String, String>{p.join(sandbox.path, 'absolute.md'): 'no'},
-        ),
+        writer.writeAll(root.path, <String, String>{
+          p.join(sandbox.path, 'absolute.md'): 'no',
+        }),
         throwsA(isA<ArgumentError>()),
       );
       for (final path in <String>[
@@ -338,10 +279,7 @@ void main() {
           reason: path,
         );
       }
-      expect(
-        await File(p.join(sandbox.path, 'escape.md')).exists(),
-        isFalse,
-      );
+      expect(await File(p.join(sandbox.path, 'escape.md')).exists(), isFalse);
     });
 
     test('check-only does not create a missing bundle root', () async {
@@ -371,7 +309,9 @@ void main() {
         throwsA(isA<FileSystemException>()),
       );
       expect(
-          await File(p.join(root.path, 'concept.md')).readAsString(), 'read\n');
+        await File(p.join(root.path, 'concept.md')).readAsString(),
+        'read\n',
+      );
 
       await expectLater(
         const OkfBundleWriter().writeAll(
@@ -382,7 +322,9 @@ void main() {
         throwsA(isA<FileSystemException>()),
       );
       expect(
-          await File(p.join(root.path, 'concept.md')).readAsString(), 'read\n');
+        await File(p.join(root.path, 'concept.md')).readAsString(),
+        'read\n',
+      );
 
       final result = await const OkfBundleWriter().writeAll(
         root.path,
@@ -391,33 +333,27 @@ void main() {
       );
 
       expect(result.changedPaths, <String>['concept.md']);
-      expect(await File(p.join(root.path, 'concept.md')).readAsString(),
-          'formatted\n');
+      expect(
+        await File(p.join(root.path, 'concept.md')).readAsString(),
+        'formatted\n',
+      );
     });
 
     test('refuses to write through a symbolic link', () async {
       if (Platform.isWindows) {
         return;
       }
-      final root = await Directory(
-        p.join(sandbox.path, 'bundle'),
-      ).create();
-      final outside = await Directory(
-        p.join(sandbox.path, 'outside'),
-      ).create();
+      final root = await Directory(p.join(sandbox.path, 'bundle')).create();
+      final outside = await Directory(p.join(sandbox.path, 'outside')).create();
       await Link(p.join(root.path, 'linked')).create(outside.path);
 
       await expectLater(
-        const OkfBundleWriter().writeAll(
-          root.path,
-          <String, String>{'linked/escape.md': 'no'},
-        ),
+        const OkfBundleWriter().writeAll(root.path, <String, String>{
+          'linked/escape.md': 'no',
+        }),
         throwsA(isA<FileSystemException>()),
       );
-      expect(
-        await File(p.join(outside.path, 'escape.md')).exists(),
-        isFalse,
-      );
+      expect(await File(p.join(outside.path, 'escape.md')).exists(), isFalse);
     });
   });
 
@@ -434,10 +370,9 @@ void main() {
       final held = await _holdBundleLock(sandbox, root.path, 'write');
 
       var written = false;
-      final write = const OkfBundleWriter().writeAll(
-          root.path, <String, String>{
-        'held.md': 'held\n'
-      }).whenComplete(() => written = true);
+      final write = const OkfBundleWriter()
+          .writeAll(root.path, <String, String>{'held.md': 'held\n'})
+          .whenComplete(() => written = true);
       var inspected = false;
       final read = const OkfBundleLoader()
           .inspect(root.path)
@@ -458,8 +393,9 @@ void main() {
 
     test('readers in separate processes share the lock', () async {
       // A reader can only take a shared claim on a lock file that exists.
-      await const OkfBundleWriter()
-          .writeAll(root.path, <String, String>{'seed.md': 'seed\n'});
+      await const OkfBundleWriter().writeAll(root.path, <String, String>{
+        'seed.md': 'seed\n',
+      });
       final held = await _holdBundleLock(sandbox, root.path, 'read');
       final probe = await _probeBundleLock(sandbox, root.path, 'read');
 
@@ -468,50 +404,56 @@ void main() {
       await held.release();
     });
 
-    test('processes disagreeing about TMPDIR still exclude each other',
-        () async {
-      if (Platform.isWindows) {
-        return;
-      }
-      final held = await _holdBundleLock(
-        sandbox,
-        root.path,
-        'write',
-        environment: <String, String>{
-          'TMPDIR':
-              (await Directory(p.join(sandbox.path, 'tmp-a')).create()).path,
-        },
-      );
-      final probe = await _probeBundleLock(
-        sandbox,
-        root.path,
-        'write',
-        environment: <String, String>{
-          'TMPDIR':
-              (await Directory(p.join(sandbox.path, 'tmp-b')).create()).path,
-        },
-      );
+    test(
+      'processes disagreeing about TMPDIR still exclude each other',
+      () async {
+        if (Platform.isWindows) {
+          return;
+        }
+        final held = await _holdBundleLock(
+          sandbox,
+          root.path,
+          'write',
+          environment: <String, String>{
+            'TMPDIR': (await Directory(
+              p.join(sandbox.path, 'tmp-a'),
+            ).create()).path,
+          },
+        );
+        final probe = await _probeBundleLock(
+          sandbox,
+          root.path,
+          'write',
+          environment: <String, String>{
+            'TMPDIR': (await Directory(
+              p.join(sandbox.path, 'tmp-b'),
+            ).create()).path,
+          },
+        );
 
-      expect(await probe.acquiredWithinWindow, isFalse);
-      await held.release();
-      await probe.done.timeout(const Duration(seconds: 10));
-    });
+        expect(await probe.acquiredWithinWindow, isFalse);
+        await held.release();
+        await probe.done.timeout(const Duration(seconds: 10));
+      },
+    );
 
-    test('a symbolically linked root shares one lock with its real path',
-        () async {
-      if (Platform.isWindows) {
-        return;
-      }
-      final alias = p.join(sandbox.path, 'alias');
-      await Link(alias).create(root.path);
-      final held = await _holdBundleLock(sandbox, alias, 'write');
-      final probe = await _probeBundleLock(sandbox, root.path, 'write');
+    test(
+      'a symbolically linked root shares one lock with its real path',
+      () async {
+        if (Platform.isWindows) {
+          return;
+        }
+        final alias = p.join(sandbox.path, 'alias');
+        await Link(alias).create(root.path);
+        final held = await _holdBundleLock(sandbox, alias, 'write');
+        final probe = await _probeBundleLock(sandbox, root.path, 'write');
 
-      expect(await probe.acquiredWithinWindow, isFalse);
-      await held.release();
-      await probe.done.timeout(const Duration(seconds: 10));
-      expect(await lockFile.exists(), isTrue);
-    });
+        expect(await probe.acquiredWithinWindow, isFalse);
+        await held.release();
+        await probe.done.timeout(const Duration(seconds: 10));
+        expect(await lockFile.exists(), isTrue);
+      },
+    );
 
     test('inspection never creates the lock file', () async {
       await const OkfBundleLoader().inspect(root.path);
@@ -522,41 +464,40 @@ void main() {
     for (final firstAttemptFails in <bool>[false, true]) {
       final firstOutcome = firstAttemptFails ? 'failed' : 'completed';
       test(
-          'retries a $firstOutcome read when the first writer creates the lock',
-          () async {
-        final state =
-            await File(p.join(root.path, 'state.txt')).writeAsString('before');
-        final firstRead = Completer<void>();
-        final releaseRead = Completer<void>();
-        var attempts = 0;
+        'retries a $firstOutcome read when the first writer creates the lock',
+        () async {
+          final state = await File(
+            p.join(root.path, 'state.txt'),
+          ).writeAsString('before');
+          final firstRead = Completer<void>();
+          final releaseRead = Completer<void>();
+          var attempts = 0;
 
-        final read = OkfBundleLock.read(root.path, () async {
-          attempts++;
-          final value = await state.readAsString();
-          if (attempts == 1) {
-            firstRead.complete();
-            await releaseRead.future;
-            if (firstAttemptFails) {
-              throw StateError('read overlapped the first write');
+          final read = OkfBundleLock.read(root.path, () async {
+            attempts++;
+            final value = await state.readAsString();
+            if (attempts == 1) {
+              firstRead.complete();
+              await releaseRead.future;
+              if (firstAttemptFails) {
+                throw StateError('read overlapped the first write');
+              }
             }
-          }
-          return value;
-        });
-        await firstRead.future;
+            return value;
+          });
+          await firstRead.future;
 
-        final writer = await _startLockHelper(
-          'write_bundle_file.dart',
-          <String>[root.path, 'state.txt', 'after'],
-        );
-        expect(
-          await writer.exitCode.timeout(const Duration(seconds: 10)),
-          0,
-        );
-        releaseRead.complete();
+          final writer = await _startLockHelper(
+            'write_bundle_file.dart',
+            <String>[root.path, 'state.txt', 'after'],
+          );
+          expect(await writer.exitCode.timeout(const Duration(seconds: 10)), 0);
+          releaseRead.complete();
 
-        expect(await read.timeout(const Duration(seconds: 10)), 'after');
-        expect(attempts, 2);
-      });
+          expect(await read.timeout(const Duration(seconds: 10)), 'after');
+          expect(attempts, 2);
+        },
+      );
     }
 
     test('does not ignore an invalid existing lock file', () async {
@@ -598,15 +539,13 @@ void main() {
     });
 
     test('lock files are not part of the bundle inventory', () async {
-      await const OkfBundleWriter().writeAll(
-        root.path,
-        <String, String>{'concept.md': '---\ntype: Reference\n---\n\n# C\n'},
-      );
+      await const OkfBundleWriter().writeAll(root.path, <String, String>{
+        'concept.md': '---\ntype: Reference\n---\n\n# C\n',
+      });
       final nestedRoot = p.join(root.path, 'nested');
-      await const OkfBundleWriter().writeAll(
-        nestedRoot,
-        <String, String>{'concept.md': '---\ntype: Reference\n---\n\n# N\n'},
-      );
+      await const OkfBundleWriter().writeAll(nestedRoot, <String, String>{
+        'concept.md': '---\ntype: Reference\n---\n\n# N\n',
+      });
       expect(await lockFile.exists(), isTrue);
       expect(
         await File(p.join(nestedRoot, okfBundleLockFileName)).exists(),
@@ -623,10 +562,9 @@ void main() {
     test('a failing action releases the lock', () async {
       await expectLater(
         OkfBundleLock.write(
-            root.path,
-            () => Future<void>.error(
-                  StateError('boom'),
-                )),
+          root.path,
+          () => Future<void>.error(StateError('boom')),
+        ),
         throwsStateError,
       );
 
@@ -700,11 +638,12 @@ Future<_HeldBundleLock> _holdBundleLock(
 }) async {
   final readyPath = p.join(sandbox.path, 'hold-$mode-ready');
   final releasePath = p.join(sandbox.path, 'hold-$mode-release');
-  final process = await _startLockHelper(
-    'hold_bundle_lock.dart',
-    <String>[rootPath, mode, readyPath, releasePath],
-    environment: environment,
-  );
+  final process = await _startLockHelper('hold_bundle_lock.dart', <String>[
+    rootPath,
+    mode,
+    readyPath,
+    releasePath,
+  ], environment: environment);
   await _waitForFile(File(readyPath));
   return _HeldBundleLock(process, releasePath);
 }
@@ -717,11 +656,12 @@ Future<_BundleLockProbe> _probeBundleLock(
 }) async {
   final startedPath = p.join(sandbox.path, 'probe-$mode-started');
   final acquiredPath = p.join(sandbox.path, 'probe-$mode-acquired');
-  final process = await _startLockHelper(
-    'acquire_bundle_lock.dart',
-    <String>[rootPath, mode, startedPath, acquiredPath],
-    environment: environment,
-  );
+  final process = await _startLockHelper('acquire_bundle_lock.dart', <String>[
+    rootPath,
+    mode,
+    startedPath,
+    acquiredPath,
+  ], environment: environment);
   await _waitForFile(File(startedPath));
   return _BundleLockProbe(process.exitCode, File(acquiredPath));
 }

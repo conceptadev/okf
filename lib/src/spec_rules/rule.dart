@@ -8,10 +8,7 @@ final class OkfSpecFindingDefinition {
 
   final OkfSpecRuleDescriptor descriptor;
 
-  OkfFinding finding({
-    required String message,
-    OkfFindingLocation? location,
-  }) =>
+  OkfFinding finding({required String message, OkfFindingLocation? location}) =>
       OkfFinding(
         id: descriptor.id,
         severity: descriptor.defaultSeverity,
@@ -29,25 +26,25 @@ final class OkfSpecRule {
   OkfSpecRuleDescriptor get descriptor => definition.descriptor;
 }
 
-typedef SpecRuleRun = Iterable<OkfFinding> Function(
-  OkfSpecFindingDefinition definition,
-  SpecValidationContext context,
-);
+typedef SpecRuleRun =
+    Iterable<OkfFinding> Function(
+      OkfSpecFindingDefinition definition,
+      SpecValidationContext context,
+    );
 
 OkfSpecFindingDefinition specFindingDefinition({
   required String code,
   required String prose,
   required OkfFindingSeverity severity,
   String specReference = 'OKF 0.2',
-}) =>
-    OkfSpecFindingDefinition(
-      OkfSpecRuleDescriptor(
-        id: OkfFindingId.okf(code),
-        prose: prose,
-        defaultSeverity: severity,
-        specReference: specReference,
-      ),
-    );
+}) => OkfSpecFindingDefinition(
+  OkfSpecRuleDescriptor(
+    id: OkfFindingId.okf(code),
+    prose: prose,
+    defaultSeverity: severity,
+    specReference: specReference,
+  ),
+);
 
 OkfSpecRule specRule({
   required String code,

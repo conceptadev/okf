@@ -38,8 +38,10 @@ void main() {
       throwsUnsupportedError,
     );
     expect(
-      () => (update.frontmatterChanges['meta']
-          as Map<String, Object?>)['reviewed'] = true,
+      () =>
+          (update.frontmatterChanges['meta']
+                  as Map<String, Object?>)['reviewed'] =
+              true,
       throwsUnsupportedError,
     );
   });
@@ -255,10 +257,7 @@ tags: [a, b]
     );
 
     expect(result, isA<OkfPreparationRefused>());
-    expect(
-      (result as OkfPreparationRefused).validation,
-      same(validation),
-    );
+    expect((result as OkfPreparationRefused).validation, same(validation));
     expect(validation.isConformant, isFalse);
   });
 }

@@ -115,10 +115,7 @@ final class OkfDocument {
     final normalized = _normalizeLineEndings(source);
     final lines = normalized.split('\n');
     if (lines.isEmpty || lines.first.trim() != '---') {
-      return OkfDocument(
-        body: normalized,
-        hasFrontmatter: false,
-      );
+      return OkfDocument(body: normalized, hasFrontmatter: false);
     }
 
     int? closingLine;
@@ -236,12 +233,11 @@ final class OkfDocument {
     Map<String, Object?>? frontmatter,
     String? body,
     bool? hasFrontmatter,
-  }) =>
-      OkfDocument(
-        frontmatter: frontmatter ?? this.frontmatter,
-        body: body ?? this.body,
-        hasFrontmatter: hasFrontmatter ?? this.hasFrontmatter,
-      );
+  }) => OkfDocument(
+    frontmatter: frontmatter ?? this.frontmatter,
+    body: body ?? this.body,
+    hasFrontmatter: hasFrontmatter ?? this.hasFrontmatter,
+  );
 
   /// Serializes the document in canonical form.
   ///
@@ -369,8 +365,10 @@ final class _YamlConversionState {
       _converted[value] = result;
       try {
         for (final entry in value.entries) {
-          result[convert(entry.key, depth + 1)] =
-              convert(entry.value, depth + 1);
+          result[convert(entry.key, depth + 1)] = convert(
+            entry.value,
+            depth + 1,
+          );
         }
       } finally {
         _active.remove(value);

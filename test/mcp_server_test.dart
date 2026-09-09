@@ -49,19 +49,16 @@ void main() {
         tool['name']! as String: tool,
     };
 
-    expect(
-      byName.keys.toSet(),
-      <String>{
-        'create-concept',
-        'update-concept',
-        'link-concepts',
-        'deprecate-concept',
-        'list-concepts',
-        'lookup-concept',
-        'query-graph',
-        'validate',
-      },
-    );
+    expect(byName.keys.toSet(), <String>{
+      'create-concept',
+      'update-concept',
+      'link-concepts',
+      'deprecate-concept',
+      'list-concepts',
+      'lookup-concept',
+      'query-graph',
+      'validate',
+    });
     for (final tool in <String>[
       'list-concepts',
       'lookup-concept',
@@ -75,10 +72,29 @@ void main() {
         'openWorldHint': false,
       });
     }
-    expect(
-      byName['query-graph']!['inputSchema'],
-      OkfGraphQuery.jsonSchema,
-    );
+    expect(byName['query-graph']!['inputSchema'], OkfGraphQuery.jsonSchema);
+    for (final entry in {
+      'lookup-concept': ['id'],
+      'create-concept': ['id'],
+      'update-concept': ['id'],
+      'link-concepts': ['source', 'target'],
+      'deprecate-concept': ['id'],
+    }.entries) {
+      final schema = byName[entry.key]!['inputSchema']! as Map<String, Object?>;
+      final properties = schema['properties']! as Map<String, Object?>;
+      expect(schema['type'], 'object');
+      expect(schema['additionalProperties'], isFalse);
+      expect(schema['required'], containsAll(entry.value));
+      for (final field in entry.value) {
+        final property = properties[field]! as Map<String, Object?>;
+        expect(property['type'], 'string', reason: '${entry.key}.$field');
+        expect(property['minLength'], 1, reason: '${entry.key}.$field');
+        expect(
+          property['description'],
+          'Bundle-relative concept ID, without the .md suffix.',
+        );
+      }
+    }
     final effects = <String, ({bool destructive, bool idempotent})>{
       'create-concept': (destructive: false, idempotent: false),
       'update-concept': (destructive: true, idempotent: true),
@@ -96,84 +112,143 @@ void main() {
     expect(await server.awaitDiagnostic(), contains('okf mcp: serving'));
   });
 
-  test('validate returns the CLI Report and Verdict, strict included',
-      () async {
-    await writeConcept(bundle, 'alpha.md');
-    await writeConcept(
-      bundle,
-      'beta.md',
-      title: 'Beta',
-      frontmatter: const <String>['status: retired'],
-    );
-    final server = await serve();
+  test(
+    'input schemas reject explicit null and unknown fields without writes',
+    () async {
+      await writeConcept(bundle, 'alpha.md');
+      final server = await serve();
+      final before = await snapshotBundle(bundle);
+      final inputs =
+          <String, ({Map<String, Object?> valid, List<String> optional})>{
+            'list-concepts': (valid: {}, optional: ['prefix', 'type', 'query']),
+            'lookup-concept': (valid: {'id': 'alpha'}, optional: []),
+            'validate': (valid: {}, optional: ['strict']),
+            'query-graph': (
+              valid: {},
+              optional: ['types', 'path_prefixes', 'resolutions'],
+            ),
+            'create-concept': (
+              valid: {'id': 'beta', 'type': 'Note'},
+              optional: ['title', 'description', 'tags', 'body'],
+            ),
+            'update-concept': (
+              valid: {'id': 'alpha', 'title': 'Alpha'},
+              optional: ['type', 'title', 'description', 'tags', 'body'],
+            ),
+            'link-concepts': (
+              valid: {
+                'source': 'alpha',
+                'target': 'beta',
+                'relationship': 'related',
+              },
+              optional: [],
+            ),
+            'deprecate-concept': (valid: {'id': 'alpha'}, optional: ['note']),
+          };
+      for (final entry in inputs.entries) {
+        for (final invalid in <Map<String, Object?>>[
+          {...entry.value.valid, 'unknown': true},
+          for (final field in entry.value.optional)
+            {...entry.value.valid, field: null},
+        ]) {
+          final result = await server.callTool(entry.key, invalid);
+          expect(result['isError'], isTrue, reason: '${entry.key}: $invalid');
+          expect(_errorReport(result), isNull);
+        }
+      }
+      for (final tool in ['create-concept', 'update-concept']) {
+        final result = await server.callTool(tool, {
+          'id': 'alpha',
+          'type': 'Note',
+          'tags': ['same', 'same'],
+        });
+        expect(result['isError'], isTrue);
+        expect(_errorReport(result), isNull);
+      }
+      expect(await snapshotBundle(bundle), before);
+      expect((await server.call('list-concepts'))['concepts'], hasLength(1));
+    },
+  );
 
-    for (final strict in <bool>[false, true]) {
-      final cli = await runCli(
-        <String>[
+  test(
+    'validate returns the CLI Report and Verdict, strict included',
+    () async {
+      await writeConcept(bundle, 'alpha.md');
+      await writeConcept(
+        bundle,
+        'beta.md',
+        title: 'Beta',
+        frontmatter: const <String>['status: retired'],
+      );
+      final server = await serve();
+
+      for (final strict in <bool>[false, true]) {
+        final cli = await runCli(<String>[
           'validate',
           'bundle',
           '--output=json',
           if (strict) '--warnings-as-errors',
-        ],
-        sandbox.path,
+        ], sandbox.path);
+        final tool = await server.callTool('validate', <String, Object?>{
+          if (strict) 'strict': true,
+        });
+
+        expect(tool['isError'], isNot(true));
+        final payload = _textPayload(tool);
+        expect(payload['report'], jsonDecode(cli.stdout));
+        expect(payload['exit_code'], cli.exitCode);
+        expect(payload['strict'], strict);
+      }
+
+      expect(
+        _findingIds(_textPayload(await server.callTool('validate'))),
+        <String>['okf/invalid-status'],
       );
-      final tool = await server.callTool('validate', <String, Object?>{
-        if (strict) 'strict': true,
+    },
+  );
+
+  test(
+    'query-graph answers the graph filter vocabulary with versioned JSON',
+    () async {
+      await writeConcept(
+        bundle,
+        'alpha.md',
+        body: '# Alpha\n\n[beta](beta.md) and [out](https://example.com)',
+      );
+      await writeConcept(bundle, 'beta.md', type: 'Note', title: 'Beta');
+      final server = await serve();
+
+      final all = await server.graph(const <String, Object?>{});
+      expect(all['schema_version'], '1');
+      expect(_nodeIds(all), <String>['alpha', 'beta']);
+      expect(_edgeKeys(all), <String>[
+        'alpha -> beta.md (body/resolved-concept)',
+        'alpha -> https://example.com (body/external)',
+      ]);
+
+      final references = await server.graph(const <String, Object?>{
+        'types': <String>['Reference'],
       });
+      expect(_nodeIds(references), <String>['alpha']);
+      expect(_edgeKeys(references), <String>[
+        'alpha -> https://example.com (body/external)',
+      ]);
 
-      expect(tool['isError'], isNot(true));
-      final payload = _textPayload(tool);
-      expect(payload['report'], jsonDecode(cli.stdout));
-      expect(payload['exit_code'], cli.exitCode);
-      expect(payload['strict'], strict);
-    }
+      final external = await server.graph(const <String, Object?>{
+        'resolutions': <String>['external'],
+      });
+      expect(_nodeIds(external), <String>['alpha', 'beta']);
+      expect(_edgeKeys(external), <String>[
+        'alpha -> https://example.com (body/external)',
+      ]);
 
-    expect(
-      _findingIds(_textPayload(await server.callTool('validate'))),
-      <String>['okf/invalid-status'],
-    );
-  });
-
-  test('query-graph answers the graph filter vocabulary with versioned JSON',
-      () async {
-    await writeConcept(
-      bundle,
-      'alpha.md',
-      body: '# Alpha\n\n[beta](beta.md) and [out](https://example.com)',
-    );
-    await writeConcept(bundle, 'beta.md', type: 'Note', title: 'Beta');
-    final server = await serve();
-
-    final all = await server.graph(const <String, Object?>{});
-    expect(all['schema_version'], '1');
-    expect(_nodeIds(all), <String>['alpha', 'beta']);
-    expect(_edgeKeys(all), <String>[
-      'alpha -> beta.md (body/resolved-concept)',
-      'alpha -> https://example.com (body/external)',
-    ]);
-
-    final references = await server.graph(const <String, Object?>{
-      'types': <String>['Reference'],
-    });
-    expect(_nodeIds(references), <String>['alpha']);
-    expect(_edgeKeys(references), <String>[
-      'alpha -> https://example.com (body/external)',
-    ]);
-
-    final external = await server.graph(const <String, Object?>{
-      'resolutions': <String>['external'],
-    });
-    expect(_nodeIds(external), <String>['alpha', 'beta']);
-    expect(_edgeKeys(external), <String>[
-      'alpha -> https://example.com (body/external)',
-    ]);
-
-    final underBeta = await server.graph(const <String, Object?>{
-      'path_prefixes': <String>['beta'],
-    });
-    expect(_nodeIds(underBeta), <String>['beta']);
-    expect(_edgeKeys(underBeta), isEmpty);
-  });
+      final underBeta = await server.graph(const <String, Object?>{
+        'path_prefixes': <String>['beta'],
+      });
+      expect(_nodeIds(underBeta), <String>['beta']);
+      expect(_edgeKeys(underBeta), isEmpty);
+    },
+  );
 
   test('lists concepts and looks one up in canonical form', () async {
     await writeConcept(bundle, 'alpha.md');
@@ -205,10 +280,9 @@ void main() {
       },
     ]);
 
-    final looked = await server.call(
-      'lookup-concept',
-      const <String, Object?>{'id': 'notes/beta'},
-    );
+    final looked = await server.call('lookup-concept', const <String, Object?>{
+      'id': 'notes/beta',
+    });
     expect(looked['id'], 'notes/beta');
     expect(looked['status'], 'draft');
     expect(
@@ -229,18 +303,20 @@ void main() {
     final server = await serve();
 
     Future<List<Object?>> listedIds(Map<String, Object?> arguments) async {
-      final concepts = (await server.call(
-          'list-concepts', arguments))['concepts']! as List<Object?>;
+      final concepts =
+          (await server.call('list-concepts', arguments))['concepts']!
+              as List<Object?>;
       return <Object?>[
         for (final concept in concepts)
           (concept! as Map<Object?, Object?>)['id'],
       ];
     }
 
-    expect(
-      await listedIds(const <String, Object?>{}),
-      <String>['alpha', 'notes-archive/gamma', 'notes/beta'],
-    );
+    expect(await listedIds(const <String, Object?>{}), <String>[
+      'alpha',
+      'notes-archive/gamma',
+      'notes/beta',
+    ]);
     expect(
       await listedIds(const <String, Object?>{'prefix': 'notes'}),
       <String>['notes/beta'],
@@ -254,10 +330,10 @@ void main() {
       await listedIds(const <String, Object?>{'prefix': 'alpha'}),
       <String>['alpha'],
     );
-    expect(
-      await listedIds(const <String, Object?>{'type': 'Note'}),
-      <String>['notes-archive/gamma', 'notes/beta'],
-    );
+    expect(await listedIds(const <String, Object?>{'type': 'Note'}), <String>[
+      'notes-archive/gamma',
+      'notes/beta',
+    ]);
     expect(
       await listedIds(const <String, Object?>{
         'prefix': 'notes',
@@ -285,171 +361,187 @@ void main() {
     );
   });
 
-  test('an empty listing reports the types and areas the bundle holds',
-      () async {
-    await writeConcept(bundle, 'alpha.md');
-    await writeConcept(bundle, 'notes/beta.md', type: 'Note', title: 'Beta');
-    await writeConcept(bundle, 'notes/gamma.md', type: 'Note', title: 'Gamma');
-    final server = await serve();
+  test(
+    'an empty listing reports the types and areas the bundle holds',
+    () async {
+      await writeConcept(bundle, 'alpha.md');
+      await writeConcept(bundle, 'notes/beta.md', type: 'Note', title: 'Beta');
+      await writeConcept(
+        bundle,
+        'notes/gamma.md',
+        type: 'Note',
+        title: 'Gamma',
+      );
+      final server = await serve();
 
-    final missed = await server.call(
-      'list-concepts',
-      const <String, Object?>{'type': 'Metric'},
-    );
-    expect(missed['concepts'], isEmpty);
-    expect(
-      missed['available_types'],
-      <String, Object?>{'Note': 2, 'Reference': 1},
-    );
-    expect(
-      missed['available_areas'],
-      <String, Object?>{'notes': 2, 'alpha': 1},
-    );
+      final missed = await server.call('list-concepts', const <String, Object?>{
+        'type': 'Metric',
+      });
+      expect(missed['concepts'], isEmpty);
+      expect(missed['available_types'], <String, Object?>{
+        'Note': 2,
+        'Reference': 1,
+      });
+      expect(missed['available_areas'], <String, Object?>{
+        'notes': 2,
+        'alpha': 1,
+      });
 
-    final matched = await server.call(
-      'list-concepts',
-      const <String, Object?>{'type': 'Note'},
-    );
-    expect(matched['concepts'], hasLength(2));
-    expect(matched.containsKey('available_types'), isFalse,
-        reason: 'hints accompany empty results alone');
-  });
+      final matched = await server.call(
+        'list-concepts',
+        const <String, Object?>{'type': 'Note'},
+      );
+      expect(matched['concepts'], hasLength(2));
+      expect(
+        matched.containsKey('available_types'),
+        isFalse,
+        reason: 'hints accompany empty results alone',
+      );
+    },
+  );
 
-  test('answers bad input with tool errors and keeps stdout JSON-RPC only',
-      () async {
-    await writeConcept(bundle, 'alpha.md');
-    final server = await serve();
+  test(
+    'answers bad input with tool errors and keeps stdout JSON-RPC only',
+    () async {
+      await writeConcept(bundle, 'alpha.md');
+      final server = await serve();
 
-    final refusals = <Map<String, Object?>>[
-      await server.callTool('query-graph', const <String, Object?>{
-        'types': 'Reference',
-      }),
-      await server.callTool('query-graph', const <String, Object?>{
-        'labels': <String>['unsupported'],
-      }),
-      await server.callTool('lookup-concept'),
-      await server.callTool(
-        'lookup-concept',
-        const <String, Object?>{'id': 'alpha.md'},
-      ),
-      await server.callTool(
-        'lookup-concept',
-        const <String, Object?>{'id': 'missing'},
-      ),
-      await server.callTool('validate', const <String, Object?>{
-        'strict': 'yes',
-      }),
-    ];
-    for (final refusal in refusals) {
-      expect(refusal['isError'], isTrue, reason: '${refusal['content']}');
-      expect(refusal['content'], isNotEmpty);
-    }
+      final refusals = <Map<String, Object?>>[
+        await server.callTool('query-graph', const <String, Object?>{
+          'types': 'Reference',
+        }),
+        await server.callTool('query-graph', const <String, Object?>{
+          'labels': <String>['unsupported'],
+        }),
+        await server.callTool('lookup-concept'),
+        await server.callTool('lookup-concept', const <String, Object?>{
+          'id': 'alpha.md',
+        }),
+        await server.callTool('lookup-concept', const <String, Object?>{
+          'id': 'missing',
+        }),
+        await server.callTool('validate', const <String, Object?>{
+          'strict': 'yes',
+        }),
+      ];
+      for (final refusal in refusals) {
+        expect(refusal['isError'], isTrue, reason: '${refusal['content']}');
+        expect(refusal['content'], isNotEmpty);
+      }
 
-    final unknownTool = await server.send('tools/call', const <String, Object?>{
-      'name': 'rename-concept',
-      'arguments': <String, Object?>{},
-    });
-    expect(unknownTool['error'], isNotNull);
+      final unknownTool = await server.send(
+        'tools/call',
+        const <String, Object?>{
+          'name': 'rename-concept',
+          'arguments': <String, Object?>{},
+        },
+      );
+      expect(unknownTool['error'], isNotNull);
 
-    await File(p.join(bundle.path, 'broken.md')).writeAsString(
-      '---\ntype: Reference\nbroken: [\n',
-    );
-    final unreadableGraph = await server.callTool(
-      'query-graph',
-      const <String, Object?>{},
-    );
-    expect(unreadableGraph['isError'], isTrue);
-    expect(
-      jsonEncode(_errorReport(unreadableGraph)),
-      contains('okf/invalid-document'),
-    );
+      await File(
+        p.join(bundle.path, 'broken.md'),
+      ).writeAsString('---\ntype: Reference\nbroken: [\n');
+      final unreadableGraph = await server.callTool(
+        'query-graph',
+        const <String, Object?>{},
+      );
+      expect(unreadableGraph['isError'], isTrue);
+      expect(
+        jsonEncode(_errorReport(unreadableGraph)),
+        contains('okf/invalid-document'),
+      );
 
-    final announced = server.stderrText.length;
-    server.sendRaw('not json at all');
+      final announced = server.stderrText.length;
+      server.sendRaw('not json at all');
 
-    await bundle.delete(recursive: true);
-    for (final unreadable in <Map<String, Object?>>[
-      await server.callTool('validate'),
-      await server.callTool('create-concept', const <String, Object?>{
-        'id': 'gamma',
-        'type': 'Reference',
-      }),
-    ]) {
-      expect(unreadable['isError'], isTrue);
-    }
+      await bundle.delete(recursive: true);
+      for (final unreadable in <Map<String, Object?>>[
+        await server.callTool('validate'),
+        await server.callTool('create-concept', const <String, Object?>{
+          'id': 'gamma',
+          'type': 'Reference',
+        }),
+      ]) {
+        expect(unreadable['isError'], isTrue);
+      }
 
-    await bundle.create();
-    await writeConcept(bundle, 'alpha.md');
-    expect(
-      (await server.call('list-concepts'))['concepts'],
-      hasLength(1),
-    );
+      await bundle.create();
+      await writeConcept(bundle, 'alpha.md');
+      expect((await server.call('list-concepts'))['concepts'], hasLength(1));
 
-    expect(
-      await server.awaitDiagnostic(after: announced),
-      contains('not json at all'),
-      reason: 'the malformed frame must be reported on stderr',
-    );
-    expect(server.stdoutLines, isNotEmpty);
-    expect(server.stdoutLines, everyElement(predicate(_isJsonRpc, 'JSON-RPC')));
-  });
+      expect(
+        await server.awaitDiagnostic(after: announced),
+        contains('not json at all'),
+        reason: 'the malformed frame must be reported on stderr',
+      );
+      expect(server.stdoutLines, isNotEmpty);
+      expect(
+        server.stdoutLines,
+        everyElement(predicate(_isJsonRpc, 'JSON-RPC')),
+      );
+    },
+  );
 
-  test('create-concept writes concept, index, and log in one operation',
-      () async {
-    await writeConcept(
-      bundle,
-      'metrics/revenue.md',
-      type: 'Metric',
-      title: 'Revenue',
-      body: '# Revenue',
-    );
-    final server = await serve();
+  test(
+    'create-concept writes concept, index, and log in one operation',
+    () async {
+      await writeConcept(
+        bundle,
+        'metrics/revenue.md',
+        type: 'Metric',
+        title: 'Revenue',
+        body: '# Revenue',
+      );
+      final server = await serve();
 
-    final result = await server.call('create-concept', <String, Object?>{
-      'id': 'metrics/churn',
-      'type': 'Metric',
-      'title': 'Churn',
-      'description': 'Monthly churn.',
-      'tags': <String>['finance'],
-      'body': '# Churn\n',
-    });
+      final result = await server.call('create-concept', <String, Object?>{
+        'id': 'metrics/churn',
+        'type': 'Metric',
+        'title': 'Churn',
+        'description': 'Monthly churn.',
+        'tags': <String>['finance'],
+        'body': '# Churn\n',
+      });
 
-    expect(
-      result['changed_paths'],
-      containsAll(<String>['metrics/churn.md', 'metrics/index.md', 'log.md']),
-    );
+      expect(
+        result['changed_paths'],
+        containsAll(<String>['metrics/churn.md', 'metrics/index.md', 'log.md']),
+      );
 
-    final concept =
-        OkfDocument.parse(await readBundleFile(bundle, 'metrics/churn.md'));
-    expect(concept.type, 'Metric');
-    expect(concept.title, 'Churn');
-    expect(concept.description, 'Monthly churn.');
-    expect(concept.tags, <String>['finance']);
-    expect(concept.body, '# Churn\n');
+      final concept = OkfDocument.parse(
+        await readBundleFile(bundle, 'metrics/churn.md'),
+      );
+      expect(concept.type, 'Metric');
+      expect(concept.title, 'Churn');
+      expect(concept.description, 'Monthly churn.');
+      expect(concept.tags, <String>['finance']);
+      expect(concept.body, '# Churn\n');
 
-    expect(
-      OkfIndexDocument.parse(await readBundleFile(bundle, 'metrics/index.md'))
-          .entries,
-      contains(
-        const OkfIndexEntry(
-          type: 'Metric',
-          title: 'Churn',
-          link: 'churn.md',
-          description: 'Monthly churn.',
+      expect(
+        OkfIndexDocument.parse(
+          await readBundleFile(bundle, 'metrics/index.md'),
+        ).entries,
+        contains(
+          const OkfIndexEntry(
+            type: 'Metric',
+            title: 'Churn',
+            link: 'churn.md',
+            description: 'Monthly churn.',
+          ),
         ),
-      ),
-    );
-    final log = OkfLogDocument.parse(await readBundleFile(bundle, 'log.md'));
-    expect(log.entries.single.action, 'Created');
-    expect(log.entries.single.description, '[Churn](metrics/churn.md)');
+      );
+      final log = OkfLogDocument.parse(await readBundleFile(bundle, 'log.md'));
+      expect(log.entries.single.action, 'Created');
+      expect(log.entries.single.description, '[Churn](metrics/churn.md)');
 
-    final cli = await runCli(<String>['validate', 'bundle'], sandbox.path);
-    expect(
-      cli.exitCode,
-      0,
-      reason: 'the bundle the write path produced must pass the CLI gate',
-    );
-  });
+      final cli = await runCli(<String>['validate', 'bundle'], sandbox.path);
+      expect(
+        cli.exitCode,
+        0,
+        reason: 'the bundle the write path produced must pass the CLI gate',
+      );
+    },
+  );
 
   test('concurrent writes preserve every accepted change', () async {
     await writeConcept(
@@ -491,6 +583,78 @@ void main() {
     );
   });
 
+  test(
+    'invalid concept IDs identify each field and reason without writes',
+    () async {
+      await writeConcept(bundle, 'alpha.md');
+      final server = await serve();
+      final before = await snapshotBundle(bundle);
+      final tools = <String, Map<String, Object?>>{
+        'lookup-concept': {'id': 'alpha'},
+        'create-concept': {'id': 'beta', 'type': 'Note'},
+        'update-concept': {'id': 'alpha', 'body': 'unrelated body content'},
+        'link-concepts': {
+          'source': 'alpha',
+          'target': 'beta',
+          'relationship': 'related',
+        },
+        'deprecate-concept': {'id': 'alpha'},
+      };
+      final invalidIds = {
+        'alpha.md': 'must not include the .md suffix',
+        '../escape': 'cannot contain empty, . or .. segments',
+        '/absolute': 'non-empty, relative POSIX paths',
+        'area//concept': 'cannot contain empty, . or .. segments',
+        r'area\concept': 'must use / separators',
+        'area/\u0007': 'cannot contain control characters',
+      };
+      for (final tool in tools.entries) {
+        final fields = tool.key == 'link-concepts'
+            ? ['source', 'target']
+            : ['id'];
+        for (final field in fields) {
+          for (final invalid in invalidIds.entries) {
+            final result = await server.callTool(tool.key, {
+              ...tool.value,
+              field: invalid.key,
+            });
+            expect(result['isError'], isTrue);
+            expect(_errorReport(result), isNull);
+            final text = _singleText(result);
+            expect(
+              text,
+              contains('#/$field:'),
+              reason: '${tool.key}: ${invalid.key}',
+            );
+            expect(text, contains(invalid.value));
+            expect(text, isNot(contains('unrelated body content')));
+            expect(text, isNot(contains('Codec decode failed')));
+            expect(text, isNot(contains('package:')));
+            expect(await snapshotBundle(bundle), before);
+          }
+        }
+      }
+
+      final both = await server.callTool('link-concepts', {
+        'source': '../escape',
+        'target': 'alpha.md',
+        'relationship': 'related',
+      });
+      expect(both['isError'], isTrue);
+      expect(_errorReport(both), isNull);
+      final messages = _singleText(both);
+      expect(messages, contains('#/source:'));
+      expect(messages, contains('cannot contain empty, . or .. segments'));
+      expect(messages, contains('#/target:'));
+      expect(messages, contains('must not include the .md suffix'));
+      expect(await snapshotBundle(bundle), before);
+      expect(
+        (await server.call('lookup-concept', {'id': 'alpha'}))['id'],
+        'alpha',
+      );
+    },
+  );
+
   test('commits advisory-only changes and separates malformed input', () async {
     await writeConcept(
       bundle,
@@ -507,12 +671,11 @@ void main() {
     });
     expect(advisory['changed_paths'], contains('metrics/café.md'));
     expect(
-        await File(p.join(bundle.path, 'metrics', 'café.md')).exists(), isTrue);
-    final validation = await server.call('validate');
-    expect(
-      _findingIds(validation),
-      contains('okf/non-portable-concept-id'),
+      await File(p.join(bundle.path, 'metrics', 'café.md')).exists(),
+      isTrue,
     );
+    final validation = await server.call('validate');
+    expect(_findingIds(validation), contains('okf/non-portable-concept-id'));
     final before = await snapshotBundle(bundle);
 
     final rejected = <Map<String, Object?>>[
@@ -583,20 +746,19 @@ void main() {
 
     final idempotent = await server.call(
       'update-concept',
-      const <String, Object?>{
-        'id': 'metrics/revenue',
-        'title': 'Revenue',
-      },
+      const <String, Object?>{'id': 'metrics/revenue', 'title': 'Revenue'},
     );
     expect(idempotent['changed_paths'], isEmpty);
     expect(await snapshotBundle(bundle), before);
 
-    final reserved =
-        await server.callTool('create-concept', const <String, Object?>{
-      'id': 'metrics/index',
-      'type': 'Metric',
-      'title': 'Reserved',
-    });
+    final reserved = await server.callTool(
+      'create-concept',
+      const <String, Object?>{
+        'id': 'metrics/index',
+        'type': 'Metric',
+        'title': 'Reserved',
+      },
+    );
     expect(reserved['isError'], isTrue);
     expect(_errorReport(reserved), isNull);
     expect(await snapshotBundle(bundle), before);
@@ -607,12 +769,14 @@ void main() {
       '# Log\n\n* **Created**: [Revenue](metrics/revenue.md)\n',
     );
     final broken = await snapshotBundle(bundle);
-    final refusedByLog =
-        await server.callTool('create-concept', const <String, Object?>{
-      'id': 'metrics/churn',
-      'type': 'Metric',
-      'title': 'Churn',
-    });
+    final refusedByLog = await server.callTool(
+      'create-concept',
+      const <String, Object?>{
+        'id': 'metrics/churn',
+        'type': 'Metric',
+        'title': 'Churn',
+      },
+    );
     expect(
       _findingIds(_errorReport(refusedByLog)!),
       contains('okf/log-entry-before-date'),
@@ -632,6 +796,7 @@ void main() {
       body: '# Revenue\n\nRecognized on delivery.',
       frontmatter: const <String>[
         'description: Monthly revenue.',
+        'tags: [finance, monthly]',
         'owner: finance-team',
         'review:',
         '  cadence: quarterly',
@@ -655,66 +820,85 @@ void main() {
     expect(document.type, 'Metric');
     expect(document.title, 'Revenue');
     expect(document.frontmatter['owner'], 'finance-team');
-    expect(
-      document.frontmatter['review'],
-      <String, Object?>{'cadence': 'quarterly'},
-    );
+    expect(document.metadata.tags, ['finance', 'monthly']);
+    expect(document.frontmatter['review'], <String, Object?>{
+      'cadence': 'quarterly',
+    });
     expect(document.body, '# Revenue\n\nRecognized on delivery.\n');
 
     final log = OkfLogDocument.parse(await readBundleFile(bundle, 'log.md'));
     expect(log.entries.single.action, 'Updated');
-  });
 
-  test('link-concepts writes the source concept and the log in one operation',
-      () async {
-    await writeConcept(
-      bundle,
-      'metrics/revenue.md',
-      type: 'Metric',
-      title: 'Revenue',
-      body: '# Revenue',
-    );
-    await writeConcept(
-      bundle,
-      'metrics/churn.md',
-      type: 'Metric',
-      title: 'Churn',
-      body: '# Churn',
-    );
-    final server = await serve();
-
-    final result = await server.call('link-concepts', <String, Object?>{
-      'source': 'metrics/revenue',
-      'target': 'metrics/churn',
-      'relationship': 'relates-to',
+    await server.call('update-concept', <String, Object?>{
+      'id': 'metrics/revenue',
+      'description': '',
+      'tags': <String>[],
+      'body': '',
     });
-    expect(
-      result['changed_paths'],
-      containsAll(<String>['metrics/revenue.md', 'log.md']),
-    );
-
-    final document = OkfDocument.parse(
+    final cleared = OkfDocument.parse(
       await readBundleFile(bundle, 'metrics/revenue.md'),
     );
-    expect(document.frontmatter['sources'], <Object?>[
-      <String, Object?>{'resource': 'churn.md', 'relationship': 'relates-to'},
-    ]);
-    expect(document.body, '# Revenue\n');
-
-    final log = OkfLogDocument.parse(await readBundleFile(bundle, 'log.md'));
-    expect(log.entries.single.action, 'Linked');
-    expect(
-      log.entries.single.description,
-      '[Revenue](metrics/revenue.md) relates-to [Churn](metrics/churn.md)',
-    );
-
-    final cli = await runCli(<String>['validate', 'bundle'], sandbox.path);
-    expect(
-      cli.exitCode,
-      0,
-      reason: 'the bundle the write path produced must pass the CLI gate',
-    );
+    expect(cleared.frontmatter['description'], '');
+    expect(cleared.metadata.tags, isEmpty);
+    expect(cleared.body, '');
+    expect(cleared.type, 'Metric');
+    expect(cleared.title, 'Revenue');
+    expect(cleared.frontmatter['owner'], 'finance-team');
+    expect(cleared.frontmatter['review'], {'cadence': 'quarterly'});
   });
+
+  test(
+    'link-concepts writes the source concept and the log in one operation',
+    () async {
+      await writeConcept(
+        bundle,
+        'metrics/revenue.md',
+        type: 'Metric',
+        title: 'Revenue',
+        body: '# Revenue',
+      );
+      await writeConcept(
+        bundle,
+        'metrics/churn.md',
+        type: 'Metric',
+        title: 'Churn',
+        body: '# Churn',
+      );
+      final server = await serve();
+
+      final result = await server.call('link-concepts', <String, Object?>{
+        'source': 'metrics/revenue',
+        'target': 'metrics/churn',
+        'relationship': 'relates-to',
+      });
+      expect(
+        result['changed_paths'],
+        containsAll(<String>['metrics/revenue.md', 'log.md']),
+      );
+
+      final document = OkfDocument.parse(
+        await readBundleFile(bundle, 'metrics/revenue.md'),
+      );
+      expect(document.frontmatter['sources'], <Object?>[
+        <String, Object?>{'resource': 'churn.md', 'relationship': 'relates-to'},
+      ]);
+      expect(document.body, '# Revenue\n');
+
+      final log = OkfLogDocument.parse(await readBundleFile(bundle, 'log.md'));
+      expect(log.entries.single.action, 'Linked');
+      expect(
+        log.entries.single.description,
+        '[Revenue](metrics/revenue.md) relates-to [Churn](metrics/churn.md)',
+      );
+
+      final cli = await runCli(<String>['validate', 'bundle'], sandbox.path);
+      expect(
+        cli.exitCode,
+        0,
+        reason: 'the bundle the write path produced must pass the CLI gate',
+      );
+    },
+  );
 
   test('link-concepts accepts an unresolved target', () async {
     await writeConcept(
@@ -769,9 +953,7 @@ void main() {
     final description = log.entries.single.description;
     expect(
       description,
-      contains(
-        r'planned\/x\]\(mailto\:attacker\@example\.com\)\[x',
-      ),
+      contains(r'planned\/x\]\(mailto\:attacker\@example\.com\)\[x'),
     );
     expect(description, isNot(contains('](mailto:')));
     final rendered = md.markdownToHtml(
@@ -783,41 +965,44 @@ void main() {
     expect(rendered, contains(target));
   });
 
-  test('deprecate-concept sets lifecycle status and writes the log entry',
-      () async {
-    await writeConcept(
-      bundle,
-      'metrics/revenue.md',
-      type: 'Metric',
-      title: 'Revenue',
-      body: '# Revenue',
-    );
-    final server = await serve();
+  test(
+    'deprecate-concept sets lifecycle status and writes the log entry',
+    () async {
+      await writeConcept(
+        bundle,
+        'metrics/revenue.md',
+        type: 'Metric',
+        title: 'Revenue',
+        body: '# Revenue',
+      );
+      final server = await serve();
 
-    final result = await server.call('deprecate-concept', <String, Object?>{
-      'id': 'metrics/revenue',
-      'note': 'Folded into churn.',
-    });
-    expect(
-      result['changed_paths'],
-      containsAll(<String>['metrics/revenue.md', 'log.md']),
-    );
+      final result = await server.call('deprecate-concept', <String, Object?>{
+        'id': 'metrics/revenue',
+        'note': 'Folded into churn.',
+      });
+      expect(
+        result['changed_paths'],
+        containsAll(<String>['metrics/revenue.md', 'log.md']),
+      );
 
-    expect(
-      OkfDocument.parse(await readBundleFile(bundle, 'metrics/revenue.md'))
-          .status,
-      OkfLifecycleStatus.deprecated,
-    );
-    final log = OkfLogDocument.parse(await readBundleFile(bundle, 'log.md'));
-    expect(log.entries.single.action, 'Deprecated');
-    expect(
-      log.entries.single.description,
-      '[Revenue](metrics/revenue.md) \u2014 Folded into churn.',
-    );
+      expect(
+        OkfDocument.parse(
+          await readBundleFile(bundle, 'metrics/revenue.md'),
+        ).status,
+        OkfLifecycleStatus.deprecated,
+      );
+      final log = OkfLogDocument.parse(await readBundleFile(bundle, 'log.md'));
+      expect(log.entries.single.action, 'Deprecated');
+      expect(
+        log.entries.single.description,
+        '[Revenue](metrics/revenue.md) \u2014 Folded into churn.',
+      );
 
-    final cli = await runCli(<String>['validate', 'bundle'], sandbox.path);
-    expect(cli.exitCode, 0);
-  });
+      final cli = await runCli(<String>['validate', 'bundle'], sandbox.path);
+      expect(cli.exitCode, 0);
+    },
+  );
 
   test('repeated link and deprecation calls write no files', () async {
     await writeConcept(
@@ -844,90 +1029,95 @@ void main() {
     final before = await snapshotBundle(bundle);
 
     final repeatedLink = await server.call('link-concepts', link);
-    final repeatedDeprecation =
-        await server.call('deprecate-concept', deprecation);
+    final repeatedDeprecation = await server.call(
+      'deprecate-concept',
+      deprecation,
+    );
 
     expect(repeatedLink['changed_paths'], isEmpty);
     expect(repeatedDeprecation['changed_paths'], isEmpty);
     expect(await snapshotBundle(bundle), before);
   });
 
-  test('refuses a Spec-invalid link candidate without changing files',
-      () async {
-    await writeConcept(
-      bundle,
-      'metrics/revenue.md',
-      includeType: false,
-      title: 'Revenue',
-      body: '# Revenue',
-    );
-    await writeConcept(
-      bundle,
-      'metrics/churn.md',
-      type: 'Metric',
-      title: 'Churn',
-      body: '# Churn',
-    );
-    final server = await serve();
-    final before = await snapshotBundle(bundle);
-
-    final refusal = await server.callTool(
-      'link-concepts',
-      const <String, Object?>{
-        'source': 'metrics/revenue',
-        'target': 'metrics/churn',
-        'relationship': 'relates-to',
-      },
-    );
-    expect(refusal['isError'], isTrue);
-    expect(
-      _findingIds(_errorReport(refusal)!),
-      contains('okf/missing-type'),
-      reason: 'a refusal carries the finding IDs the CLI reports',
-    );
-    expect(await snapshotBundle(bundle), before);
-    expect(server.stdoutLines, everyElement(predicate(_isJsonRpc, 'JSON-RPC')));
-  });
-
-  test('complete reads refuse a partial bundle while validate inspects it',
-      () async {
-    await writeConcept(bundle, 'alpha.md');
-    await File(p.join(bundle.path, 'broken.md')).writeAsString(
-      '---\ntype: Reference\nbroken: [\n',
-    );
-    final server = await serve();
-
-    for (final result in <Map<String, Object?>>[
-      await server.callTool('list-concepts'),
-      await server.callTool(
-        'lookup-concept',
-        const <String, Object?>{'id': 'alpha'},
-      ),
-      await server.callTool('query-graph'),
-    ]) {
-      expect(result['isError'], isTrue);
-      expect(
-        jsonEncode(_errorReport(result)),
-        contains('invalid-document'),
+  test(
+    'refuses a Spec-invalid link candidate without changing files',
+    () async {
+      await writeConcept(
+        bundle,
+        'metrics/revenue.md',
+        includeType: false,
+        title: 'Revenue',
+        body: '# Revenue',
       );
-    }
+      await writeConcept(
+        bundle,
+        'metrics/churn.md',
+        type: 'Metric',
+        title: 'Churn',
+        body: '# Churn',
+      );
+      final server = await serve();
+      final before = await snapshotBundle(bundle);
 
-    final validation = await server.callTool('validate');
-    expect(validation['isError'], isNot(true));
-    expect(
-      jsonEncode(_textPayload(validation)),
-      contains('okf/invalid-document'),
-    );
-    expect(await server.awaitDiagnostic(), contains('1 unreadable file(s)'));
-  });
+      final refusal = await server
+          .callTool('link-concepts', const <String, Object?>{
+            'source': 'metrics/revenue',
+            'target': 'metrics/churn',
+            'relationship': 'relates-to',
+          });
+      expect(refusal['isError'], isTrue);
+      expect(
+        _findingIds(_errorReport(refusal)!),
+        contains('okf/missing-type'),
+        reason: 'a refusal carries the finding IDs the CLI reports',
+      );
+      expect(await snapshotBundle(bundle), before);
+      expect(
+        server.stdoutLines,
+        everyElement(predicate(_isJsonRpc, 'JSON-RPC')),
+      );
+    },
+  );
+
+  test(
+    'complete reads refuse a partial bundle while validate inspects it',
+    () async {
+      await writeConcept(bundle, 'alpha.md');
+      await File(
+        p.join(bundle.path, 'broken.md'),
+      ).writeAsString('---\ntype: Reference\nbroken: [\n');
+      final server = await serve();
+
+      for (final result in <Map<String, Object?>>[
+        await server.callTool('list-concepts'),
+        await server.callTool('lookup-concept', const <String, Object?>{
+          'id': 'alpha',
+        }),
+        await server.callTool('query-graph'),
+      ]) {
+        expect(result['isError'], isTrue);
+        expect(jsonEncode(_errorReport(result)), contains('invalid-document'));
+      }
+
+      final validation = await server.callTool('validate');
+      expect(validation['isError'], isNot(true));
+      expect(
+        jsonEncode(_textPayload(validation)),
+        contains('okf/invalid-document'),
+      );
+      expect(await server.awaitDiagnostic(), contains('1 unreadable file(s)'));
+    },
+  );
 }
 
 /// Decodes a successful tool result's payload from its single text block,
 /// where the server now carries it exactly once.
-Map<String, Object?> _textPayload(Map<String, Object?> result) {
+Map<String, Object?> _textPayload(Map<String, Object?> result) =>
+    jsonDecode(_singleText(result)) as Map<String, Object?>;
+
+String _singleText(Map<String, Object?> result) {
   final content = (result['content']! as List<Object?>).single;
-  final text = (content! as Map<String, Object?>)['text']! as String;
-  return jsonDecode(text) as Map<String, Object?>;
+  return (content! as Map<String, Object?>)['text']! as String;
 }
 
 /// Decodes the Report payload a refusal carries as its second text block, or
@@ -942,11 +1132,12 @@ Map<String, Object?>? _errorReport(Map<String, Object?> result) {
 }
 
 List<String> _findingIds(Map<String, Object?> payload) => <String>[
-      for (final finding in ((payload['report']!
-              as Map<String, Object?>)['findings']! as List<Object?>)
+  for (final finding
+      in ((payload['report']! as Map<String, Object?>)['findings']!
+              as List<Object?>)
           .cast<Map<String, Object?>>())
-        finding['id']! as String,
-    ];
+    finding['id']! as String,
+];
 
 bool _isJsonRpc(Object? line) {
   final Object? decoded;
@@ -959,27 +1150,29 @@ bool _isJsonRpc(Object? line) {
 }
 
 List<String> _nodeIds(Map<String, Object?> graph) => <String>[
-      for (final node
-          in (graph['nodes']! as List<Object?>).cast<Map<String, Object?>>())
-        node['id']! as String,
-    ];
+  for (final node
+      in (graph['nodes']! as List<Object?>).cast<Map<String, Object?>>())
+    node['id']! as String,
+];
 
 List<String> _edgeKeys(Map<String, Object?> graph) => <String>[
-      for (final edge
-          in (graph['edges']! as List<Object?>).cast<Map<String, Object?>>())
-        '${edge['source']} -> ${edge['raw_target']} '
-            '(${edge['origin']}/${edge['resolution']})',
-    ];
+  for (final edge
+      in (graph['edges']! as List<Object?>).cast<Map<String, Object?>>())
+    '${edge['source']} -> ${edge['raw_target']} '
+        '(${edge['origin']}/${edge['resolution']})',
+];
 
 /// A JSON-RPC client that drives `okf mcp` as a real subprocess.
 final class _McpHarness {
   _McpHarness._(this._process);
 
   static Future<_McpHarness> start(String bundlePath) async {
-    final process = await Process.start(
-      Platform.resolvedExecutable,
-      <String>['run', 'bin/okf.dart', 'mcp', bundlePath],
-    );
+    final process = await Process.start(Platform.resolvedExecutable, <String>[
+      'run',
+      'bin/okf.dart',
+      'mcp',
+      bundlePath,
+    ]);
     return _McpHarness._(process).._listen();
   }
 
@@ -1062,11 +1255,10 @@ final class _McpHarness {
   Future<Map<String, Object?>> callTool(
     String name, [
     Map<String, Object?> arguments = const <String, Object?>{},
-  ]) =>
-      request('tools/call', <String, Object?>{
-        'name': name,
-        'arguments': arguments,
-      });
+  ]) => request('tools/call', <String, Object?>{
+    'name': name,
+    'arguments': arguments,
+  });
 
   Future<Map<String, Object?>> request(
     String method, [

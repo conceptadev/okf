@@ -23,8 +23,9 @@ void main() {
     final report = const OkfSpecValidator().validate(bundle).report;
 
     expect(
-      report.findings
-          .where((finding) => finding.severity == OkfFindingSeverity.error),
+      report.findings.where(
+        (finding) => finding.severity == OkfFindingSeverity.error,
+      ),
       hasLength(4),
     );
     expect(
@@ -175,9 +176,7 @@ Narrative instead of a list item.
     expect(OkfVerdict.of(report).exitCode, 0);
     expect(
       report.findings
-          .where(
-            (finding) => finding.severity == OkfFindingSeverity.advisory,
-          )
+          .where((finding) => finding.severity == OkfFindingSeverity.advisory)
           .length,
       greaterThanOrEqualTo(9),
     );

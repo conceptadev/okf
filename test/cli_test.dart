@@ -31,10 +31,10 @@ void main() {
     expect(help.exitCode, 0);
     expect(help.stdout, contains('Usage: okf <command>'));
 
-    final commandHelp = await runCli(
-      <String>['validate', '--help'],
-      sandbox.path,
-    );
+    final commandHelp = await runCli(<String>[
+      'validate',
+      '--help',
+    ], sandbox.path);
     expect(commandHelp.exitCode, 0);
     expect(commandHelp.stdout, contains('Usage: okf validate <bundle>'));
 
@@ -52,17 +52,18 @@ void main() {
     expect(missingCommand.exitCode, 2);
     expect(missingCommand.stderr, contains('A command is required'));
 
-    final extraOperand = await runCli(
-      <String>['validate', 'one', 'two'],
-      sandbox.path,
-    );
+    final extraOperand = await runCli(<String>[
+      'validate',
+      'one',
+      'two',
+    ], sandbox.path);
     expect(extraOperand.exitCode, 2);
     expect(extraOperand.stderr, contains('exactly one'));
 
-    final missingBundle = await runCli(
-      <String>['validate', 'missing'],
-      sandbox.path,
-    );
+    final missingBundle = await runCli(<String>[
+      'validate',
+      'missing',
+    ], sandbox.path);
     expect(missingBundle.exitCode, 2);
     expect(missingBundle.stderr, contains('not a directory'));
   });
@@ -78,22 +79,22 @@ void main() {
       p.join(readOnlyParent.path, 'bundle'),
     ).create();
 
-    final restricted = await Process.run(
-      'chmod',
-      <String>['0555', readOnlyParent.path],
-    );
+    final restricted = await Process.run('chmod', <String>[
+      '0555',
+      readOnlyParent.path,
+    ]);
     expect(restricted.exitCode, 0, reason: '${restricted.stderr}');
     late final CliResult result;
     try {
-      result = await runCli(
-        <String>['validate', readOnlyBundle.path],
-        sandbox.path,
-      );
+      result = await runCli(<String>[
+        'validate',
+        readOnlyBundle.path,
+      ], sandbox.path);
     } finally {
-      final restored = await Process.run(
-        'chmod',
-        <String>['0755', readOnlyParent.path],
-      );
+      final restored = await Process.run('chmod', <String>[
+        '0755',
+        readOnlyParent.path,
+      ]);
       expect(restored.exitCode, 0, reason: '${restored.stderr}');
     }
 
@@ -110,19 +111,19 @@ void main() {
       return;
     }
     await writeConcept(bundle, 'alpha.md');
-    final restricted = await Process.run(
-      'chmod',
-      <String>['0555', bundle.path],
-    );
+    final restricted = await Process.run('chmod', <String>[
+      '0555',
+      bundle.path,
+    ]);
     expect(restricted.exitCode, 0, reason: '${restricted.stderr}');
     late final CliResult result;
     try {
       result = await runCli(<String>['validate', 'bundle'], sandbox.path);
     } finally {
-      final restored = await Process.run(
-        'chmod',
-        <String>['0755', bundle.path],
-      );
+      final restored = await Process.run('chmod', <String>[
+        '0755',
+        bundle.path,
+      ]);
       expect(restored.exitCode, 0, reason: '${restored.stderr}');
     }
 
@@ -133,17 +134,15 @@ void main() {
   test('validates bundles in text and JSON formats', () async {
     await writeConcept(bundle, 'alpha.md');
 
-    final text = await runCli(
-      <String>['validate', 'bundle'],
-      sandbox.path,
-    );
+    final text = await runCli(<String>['validate', 'bundle'], sandbox.path);
     expect(text.exitCode, 0);
     expect(text.stdout, 'OK: 1 concept(s) validated.');
 
-    final json = await runCli(
-      <String>['validate', 'bundle', '--output=json'],
-      sandbox.path,
-    );
+    final json = await runCli(<String>[
+      'validate',
+      'bundle',
+      '--output=json',
+    ], sandbox.path);
     final payload = jsonDecode(json.stdout) as Map<String, Object?>;
     expect(json.exitCode, 0);
     expect(payload['findings'], isEmpty);
@@ -152,26 +151,28 @@ void main() {
 
   test('reports conformance and load failures with exit code 1', () async {
     await writeConcept(bundle, 'missing_type.md', includeType: false);
-    await File(p.join(bundle.path, 'empty_type.md')).writeAsString(
-      '---\ntype: ""\n---\n',
-    );
-    await File(p.join(bundle.path, 'broken.md')).writeAsString(
-      '---\ntype: Reference\nbroken: [\n',
-    );
+    await File(
+      p.join(bundle.path, 'empty_type.md'),
+    ).writeAsString('---\ntype: ""\n---\n');
+    await File(
+      p.join(bundle.path, 'broken.md'),
+    ).writeAsString('---\ntype: Reference\nbroken: [\n');
 
-    final result = await runCli(
-      <String>['validate', 'bundle', '--output=json'],
-      sandbox.path,
-    );
+    final result = await runCli(<String>[
+      'validate',
+      'bundle',
+      '--output=json',
+    ], sandbox.path);
     final payload = jsonDecode(result.stdout) as Map<String, Object?>;
-    final findings =
-        (payload['findings']! as List<Object?>).cast<Map<String, Object?>>();
+    final findings = (payload['findings']! as List<Object?>)
+        .cast<Map<String, Object?>>();
 
     expect(result.exitCode, 1);
     expect(
       (findings.singleWhere(
-        (item) => item['id'] == 'okf/invalid-document',
-      )['location']! as Map<String, Object?>)['line'],
+            (item) => item['id'] == 'okf/invalid-document',
+          )['location']!
+          as Map<String, Object?>)['line'],
       isNotNull,
     );
     expect(
@@ -187,23 +188,22 @@ void main() {
   test('strict mode promotes advisories to a failing exit status', () async {
     await writeConcept(bundle, 'café.md');
 
-    final ordinary = await runCli(
-      <String>['validate', 'bundle'],
-      sandbox.path,
-    );
+    final ordinary = await runCli(<String>['validate', 'bundle'], sandbox.path);
     expect(ordinary.exitCode, 0);
     expect(ordinary.stdout, contains('advisory okf/non-portable-concept-id'));
 
-    final strict = await runCli(
-      <String>['validate', 'bundle', '--strict'],
-      sandbox.path,
-    );
+    final strict = await runCli(<String>[
+      'validate',
+      'bundle',
+      '--strict',
+    ], sandbox.path);
     expect(strict.exitCode, 1);
 
-    final alias = await runCli(
-      <String>['validate', 'bundle', '--warnings-as-errors'],
-      sandbox.path,
-    );
+    final alias = await runCli(<String>[
+      'validate',
+      'bundle',
+      '--warnings-as-errors',
+    ], sandbox.path);
     expect(alias.exitCode, 1);
   });
 
@@ -212,26 +212,25 @@ void main() {
     const original = '---\ntitle: Alpha\ntype: Reference\n---\n\n# Alpha';
     await file.writeAsString(original);
 
-    final check = await runCli(
-      <String>['format', 'bundle', '--check'],
-      sandbox.path,
-    );
+    final check = await runCli(<String>[
+      'format',
+      'bundle',
+      '--check',
+    ], sandbox.path);
     expect(check.exitCode, 1);
     expect(check.stdout, contains('Would format alpha.md'));
     expect(await file.readAsString(), original);
 
-    final formatted = await runCli(
-      <String>['format', 'bundle'],
-      sandbox.path,
-    );
+    final formatted = await runCli(<String>['format', 'bundle'], sandbox.path);
     expect(formatted.exitCode, 0);
     expect(formatted.stdout, 'Formatted 1 file(s).');
     expect(await file.readAsString(), isNot(original));
 
-    final secondCheck = await runCli(
-      <String>['format', 'bundle', '--check'],
-      sandbox.path,
-    );
+    final secondCheck = await runCli(<String>[
+      'format',
+      'bundle',
+      '--check',
+    ], sandbox.path);
     expect(secondCheck.exitCode, 0);
     expect(secondCheck.stdout, 'Already formatted.');
   });
@@ -253,8 +252,10 @@ void main() {
       await lockAcquired.future;
 
       var cliDone = false;
-      final cli = runCli(<String>[command, 'bundle'], sandbox.path)
-          .whenComplete(() => cliDone = true);
+      final cli = runCli(<String>[
+        command,
+        'bundle',
+      ], sandbox.path).whenComplete(() => cliDone = true);
       await pumpEventQueue();
       var changeDone = false;
       final concurrentChange = const OkfBundleChangeApplier()
@@ -276,8 +277,9 @@ void main() {
 
       releaseLock.complete();
       final cliResult = await cli.timeout(const Duration(seconds: 10));
-      final application =
-          await concurrentChange.timeout(const Duration(seconds: 10));
+      final application = await concurrentChange.timeout(
+        const Duration(seconds: 10),
+      );
       await holdingLock.timeout(const Duration(seconds: 10));
       expect(cliResult.exitCode, 0, reason: cliResult.stderr);
       expect(application, isA<OkfBundleApplied>());
@@ -293,37 +295,38 @@ void main() {
     });
   }
 
-  test('formats a nested file without touching the rest of the bundle',
-      () async {
-    await writeConcept(bundle, 'alpha.md');
-    await writeBundleFile(
-      bundle,
-      'nested/beta.md',
-      '---\ntype: Reference\ntitle: Beta\n---\n\n# Beta',
-    );
-    final before = await snapshotBundle(bundle);
+  test(
+    'formats a nested file without touching the rest of the bundle',
+    () async {
+      await writeConcept(bundle, 'alpha.md');
+      await writeBundleFile(
+        bundle,
+        'nested/beta.md',
+        '---\ntype: Reference\ntitle: Beta\n---\n\n# Beta',
+      );
+      final before = await snapshotBundle(bundle);
 
-    final result = await runCli(
-      <String>['format', p.join('bundle', 'nested', 'beta.md')],
-      sandbox.path,
-    );
+      final result = await runCli(<String>[
+        'format',
+        p.join('bundle', 'nested', 'beta.md'),
+      ], sandbox.path);
 
-    expect(result.exitCode, 0, reason: result.stderr);
-    expect(result.stdout, 'Formatted 1 file(s).');
-    expect(
-      await readBundleFile(bundle, 'nested/beta.md'),
-      '---\ntype: Reference\ntitle: Beta\n---\n\n# Beta\n',
-    );
-    expect(
-      await readBundleFile(bundle, 'alpha.md'),
-      before['alpha.md'],
-    );
-    expect(
-      await File(p.join(bundle.path, 'nested', okfBundleLockFileName)).exists(),
-      isTrue,
-      reason: 'a file operand locks its own directory',
-    );
-  });
+      expect(result.exitCode, 0, reason: result.stderr);
+      expect(result.stdout, 'Formatted 1 file(s).');
+      expect(
+        await readBundleFile(bundle, 'nested/beta.md'),
+        '---\ntype: Reference\ntitle: Beta\n---\n\n# Beta\n',
+      );
+      expect(await readBundleFile(bundle, 'alpha.md'), before['alpha.md']);
+      expect(
+        await File(
+          p.join(bundle.path, 'nested', okfBundleLockFileName),
+        ).exists(),
+        isTrue,
+        reason: 'a file operand locks its own directory',
+      );
+    },
+  );
 
   test('read-only commands leave no lock file in the bundle', () async {
     await writeConcept(bundle, 'alpha.md');
@@ -336,11 +339,7 @@ void main() {
       <String>['index', '--check', 'bundle'],
     ]) {
       await runCli(arguments, sandbox.path);
-      expect(
-        await lockFile.exists(),
-        isFalse,
-        reason: arguments.join(' '),
-      );
+      expect(await lockFile.exists(), isFalse, reason: arguments.join(' '));
     }
   });
 
@@ -348,14 +347,11 @@ void main() {
     final valid = File(p.join(bundle.path, 'valid.md'));
     const unformatted = '---\ntitle: Valid\ntype: Reference\n---\n\n# Valid';
     await valid.writeAsString(unformatted);
-    await File(p.join(bundle.path, 'broken.md')).writeAsString(
-      '---\ntype: Reference\nbroken: [\n',
-    );
+    await File(
+      p.join(bundle.path, 'broken.md'),
+    ).writeAsString('---\ntype: Reference\nbroken: [\n');
 
-    final result = await runCli(
-      <String>['format', 'bundle'],
-      sandbox.path,
-    );
+    final result = await runCli(<String>['format', 'bundle'], sandbox.path);
 
     expect(result.exitCode, 1);
     expect(result.stdout, contains('okf/invalid-document'));
@@ -365,10 +361,10 @@ void main() {
   test('format rejects non-Markdown files', () async {
     await File(p.join(bundle.path, 'query.sql')).writeAsString('select 1');
 
-    final result = await runCli(
-      <String>['format', 'bundle/query.sql'],
-      sandbox.path,
-    );
+    final result = await runCli(<String>[
+      'format',
+      'bundle/query.sql',
+    ], sandbox.path);
 
     expect(result.exitCode, 2);
     expect(result.stderr, contains('only .md files'));
@@ -377,34 +373,31 @@ void main() {
   test('generates and checks deterministic indexes', () async {
     await writeConcept(bundle, 'alpha.md');
 
-    final firstCheck = await runCli(
-      <String>['index', 'bundle', '--check'],
-      sandbox.path,
-    );
+    final firstCheck = await runCli(<String>[
+      'index',
+      'bundle',
+      '--check',
+    ], sandbox.path);
     expect(firstCheck.exitCode, 1);
     expect(firstCheck.stdout, contains('Index is stale: index.md'));
     expect(await File(p.join(bundle.path, 'index.md')).exists(), isFalse);
 
-    final generated = await runCli(
-      <String>[
-        'index',
-        'bundle',
-        '--declare-version=0.2',
-      ],
-      sandbox.path,
-    );
+    final generated = await runCli(<String>[
+      'index',
+      'bundle',
+      '--declare-version=0.2',
+    ], sandbox.path);
     expect(generated.exitCode, 0);
     expect(generated.stdout, 'Generated 1 index file(s).');
-    final index = await File(
-      p.join(bundle.path, 'index.md'),
-    ).readAsString();
+    final index = await File(p.join(bundle.path, 'index.md')).readAsString();
     expect(index, contains('okf_version: "0.2"'));
     expect(index, contains('[Alpha](alpha.md)'));
 
-    final current = await runCli(
-      <String>['index', 'bundle', '--check'],
-      sandbox.path,
-    );
+    final current = await runCli(<String>[
+      'index',
+      'bundle',
+      '--check',
+    ], sandbox.path);
     expect(current.exitCode, 0);
     expect(current.stdout, 'Indexes are current.');
   });
@@ -412,24 +405,27 @@ void main() {
   test('renders JSON, DOT, and Mermaid graphs', () async {
     await writeConcept(bundle, 'alpha.md');
 
-    final json = await runCli(
-      <String>['graph', 'bundle', '--output=json'],
-      sandbox.path,
-    );
+    final json = await runCli(<String>[
+      'graph',
+      'bundle',
+      '--output=json',
+    ], sandbox.path);
     expect(json.exitCode, 0);
     expect(jsonDecode(json.stdout), isA<Map<String, Object?>>());
 
-    final dot = await runCli(
-      <String>['graph', 'bundle', '--output=dot'],
-      sandbox.path,
-    );
+    final dot = await runCli(<String>[
+      'graph',
+      'bundle',
+      '--output=dot',
+    ], sandbox.path);
     expect(dot.exitCode, 0);
     expect(dot.stdout, contains('digraph'));
 
-    final mermaid = await runCli(
-      <String>['graph', 'bundle', '--output=mermaid'],
-      sandbox.path,
-    );
+    final mermaid = await runCli(<String>[
+      'graph',
+      'bundle',
+      '--output=mermaid',
+    ], sandbox.path);
     expect(mermaid.exitCode, 0);
     expect(mermaid.stdout, anyOf(contains('flowchart'), contains('graph')));
   });
@@ -441,11 +437,7 @@ void main() {
       type: 'Metric',
       body: '[peer](peer.md) [missing](missing.md)',
     );
-    await writeConcept(
-      bundle,
-      'analytics/peer.md',
-      type: 'Metric',
-    );
+    await writeConcept(bundle, 'analytics/peer.md', type: 'Metric');
     await writeConcept(bundle, 'analytics/reference.md');
     await writeConcept(bundle, 'other/metric.md', type: 'Metric');
     const filters = <String>[
@@ -456,27 +448,31 @@ void main() {
       '--resolution=unresolved',
     ];
 
-    final json = await runCli(
-      <String>['graph', 'bundle', '--output=json', ...filters],
-      sandbox.path,
-    );
+    final json = await runCli(<String>[
+      'graph',
+      'bundle',
+      '--output=json',
+      ...filters,
+    ], sandbox.path);
     expect(json.exitCode, 0, reason: json.stderr);
     final payload = jsonDecode(json.stdout) as Map<String, Object?>;
-    final nodes =
-        (payload['nodes']! as List<Object?>).cast<Map<String, Object?>>();
-    final edges =
-        (payload['edges']! as List<Object?>).cast<Map<String, Object?>>();
-    expect(
-      nodes.map((node) => node['id']),
-      <String>['analytics/peer', 'analytics/primary'],
-    );
+    final nodes = (payload['nodes']! as List<Object?>)
+        .cast<Map<String, Object?>>();
+    final edges = (payload['edges']! as List<Object?>)
+        .cast<Map<String, Object?>>();
+    expect(nodes.map((node) => node['id']), <String>[
+      'analytics/peer',
+      'analytics/primary',
+    ]);
     expect(edges.single['raw_target'], 'missing.md');
 
     for (final format in <String>['dot', 'mermaid']) {
-      final rendered = await runCli(
-        <String>['graph', 'bundle', '--output=$format', ...filters],
-        sandbox.path,
-      );
+      final rendered = await runCli(<String>[
+        'graph',
+        'bundle',
+        '--output=$format',
+        ...filters,
+      ], sandbox.path);
       expect(rendered.exitCode, 0, reason: rendered.stderr);
       expect(rendered.stdout, contains('analytics/primary'));
       expect(rendered.stdout, contains('missing.md'));
@@ -486,24 +482,17 @@ void main() {
   });
 
   test('preserves commas in free-form graph filters', () async {
-    await writeConcept(
-      bundle,
-      'sales,ops/primary.md',
-      type: 'Metric, Derived',
-    );
+    await writeConcept(bundle, 'sales,ops/primary.md', type: 'Metric, Derived');
 
-    final result = await runCli(
-      <String>[
-        'graph',
-        'bundle',
-        '--type=Metric, Derived',
-        '--path-prefix=sales,ops/',
-      ],
-      sandbox.path,
-    );
+    final result = await runCli(<String>[
+      'graph',
+      'bundle',
+      '--type=Metric, Derived',
+      '--path-prefix=sales,ops/',
+    ], sandbox.path);
     final payload = jsonDecode(result.stdout) as Map<String, Object?>;
-    final nodes =
-        (payload['nodes']! as List<Object?>).cast<Map<String, Object?>>();
+    final nodes = (payload['nodes']! as List<Object?>)
+        .cast<Map<String, Object?>>();
 
     expect(result.exitCode, 0, reason: result.stderr);
     expect(nodes.map((node) => node['id']), <String>['sales,ops/primary']);
@@ -511,54 +500,50 @@ void main() {
 
   test('surfaces malformed indexes that will not be regenerated', () async {
     await writeConcept(bundle, 'alpha.md');
-    final orphan = await Directory(
-      p.join(bundle.path, 'assets'),
-    ).create();
-    await File(p.join(orphan.path, 'index.md')).writeAsString(
-      '---\nnot: [valid\n',
-    );
+    final orphan = await Directory(p.join(bundle.path, 'assets')).create();
+    await File(
+      p.join(orphan.path, 'index.md'),
+    ).writeAsString('---\nnot: [valid\n');
 
-    final result = await runCli(
-      <String>['index', 'bundle'],
-      sandbox.path,
-    );
+    final result = await runCli(<String>['index', 'bundle'], sandbox.path);
 
     expect(result.exitCode, 1);
     expect(result.stdout, contains('okf/invalid-reserved-document'));
   });
 
-  test('reports mcp usage errors before stdout becomes a JSON-RPC channel',
-      () async {
-    final rootHelp = await runCli(<String>['--help'], sandbox.path);
-    expect(rootHelp.stdout, contains('mcp        Serve'));
+  test(
+    'reports mcp usage errors before stdout becomes a JSON-RPC channel',
+    () async {
+      final rootHelp = await runCli(<String>['--help'], sandbox.path);
+      expect(rootHelp.stdout, contains('mcp        Serve'));
 
-    final help = await runCli(<String>['mcp', '--help'], sandbox.path);
-    expect(help.exitCode, 0);
-    expect(help.stdout, contains('Usage: okf mcp <bundle>'));
+      final help = await runCli(<String>['mcp', '--help'], sandbox.path);
+      expect(help.exitCode, 0);
+      expect(help.stdout, contains('Usage: okf mcp <bundle>'));
 
-    final missingOperand = await runCli(<String>['mcp'], sandbox.path);
-    expect(missingOperand.exitCode, 2);
-    expect(missingOperand.stderr, contains('exactly one'));
+      final missingOperand = await runCli(<String>['mcp'], sandbox.path);
+      expect(missingOperand.exitCode, 2);
+      expect(missingOperand.stderr, contains('exactly one'));
 
-    final missingBundle =
-        await runCli(<String>['mcp', 'missing'], sandbox.path);
-    expect(missingBundle.exitCode, 2);
-    expect(missingBundle.stdout, isEmpty);
-    expect(missingBundle.stderr, contains('not a directory'));
-  });
+      final missingBundle = await runCli(<String>[
+        'mcp',
+        'missing',
+      ], sandbox.path);
+      expect(missingBundle.exitCode, 2);
+      expect(missingBundle.stdout, isEmpty);
+      expect(missingBundle.stderr, contains('not a directory'));
+    },
+  );
 
   test('escapes control characters in terminal findings', () async {
     if (Platform.isWindows) {
       return;
     }
-    await File(p.join(bundle.path, 'bad\u001b.md')).writeAsString(
-      '---\ntype: Reference\n---\n',
-    );
+    await File(
+      p.join(bundle.path, 'bad\u001b.md'),
+    ).writeAsString('---\ntype: Reference\n---\n');
 
-    final result = await runCli(
-      <String>['validate', 'bundle'],
-      sandbox.path,
-    );
+    final result = await runCli(<String>['validate', 'bundle'], sandbox.path);
 
     expect(result.exitCode, 1);
     expect(result.stdout, isNot(contains('\u001b')));

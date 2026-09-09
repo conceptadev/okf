@@ -38,11 +38,10 @@ String? decodeOkfLinkSegment(String segment) {
 }
 
 /// Escapes a generated concept-link [value] as literal single-line text.
-String escapeOkfConceptLinkLabel(String value) =>
-    value.trim().replaceAll(_whitespaceRun, ' ').replaceAllMapped(
-          _markdownPunctuation,
-          (match) => '\\${match.group(0)}',
-        );
+String escapeOkfConceptLinkLabel(String value) => value
+    .trim()
+    .replaceAll(_whitespaceRun, ' ')
+    .replaceAllMapped(_markdownPunctuation, (match) => '\\${match.group(0)}');
 
 final RegExp _whitespaceRun = RegExp(r'\s+');
 final RegExp _markdownPunctuation = RegExp(

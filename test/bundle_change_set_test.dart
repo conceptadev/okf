@@ -11,9 +11,7 @@ void main() {
 
   setUp(() async {
     root = await Directory.systemTemp.createTemp('okf-change-set-test-');
-    changes = OkfBundleChangeApplier(
-      clock: () => DateTime.utc(2026, 8, 18),
-    );
+    changes = OkfBundleChangeApplier(clock: () => DateTime.utc(2026, 8, 18));
     await _seedBundle(root);
   });
 
@@ -23,40 +21,42 @@ void main() {
     }
   });
 
-  test('prepare is non-mutating and commit writes the prepared candidate',
-      () async {
-    final before = await _snapshot(root);
-    final preparation = await changes.prepare(root.path, _createChurn());
+  test(
+    'prepare is non-mutating and commit writes the prepared candidate',
+    () async {
+      final before = await _snapshot(root);
+      final preparation = await changes.prepare(root.path, _createChurn());
 
-    expect(preparation, isA<OkfPreparationReady>());
-    expect(await _snapshot(root), before);
-    final prepared = (preparation as OkfPreparationReady).prepared;
-    expect(prepared.validation.isConformant, isTrue);
-    expect(
-      prepared.validation.report.toJson(),
-      const OkfSpecValidator()
-          .validate(prepared.candidate.toBundle())
-          .report
-          .toJson(),
-    );
+      expect(preparation, isA<OkfPreparationReady>());
+      expect(await _snapshot(root), before);
+      final prepared = (preparation as OkfPreparationReady).prepared;
+      expect(prepared.validation.isConformant, isTrue);
+      expect(
+        prepared.validation.report.toJson(),
+        const OkfSpecValidator()
+            .validate(prepared.candidate.toBundle())
+            .report
+            .toJson(),
+      );
 
-    final result = await changes.commit(prepared);
-    expect(
-      result.changedPaths,
-      containsAll(<String>['metrics/churn.md', 'metrics/index.md', 'log.md']),
-    );
-    expect(
-      await _read(root, 'metrics/churn.md'),
-      prepared.candidate.concepts['metrics/churn.md'],
-    );
+      final result = await changes.commit(prepared);
+      expect(
+        result.changedPaths,
+        containsAll(<String>['metrics/churn.md', 'metrics/index.md', 'log.md']),
+      );
+      expect(
+        await _read(root, 'metrics/churn.md'),
+        prepared.candidate.concepts['metrics/churn.md'],
+      );
 
-    final loaded = await const OkfBundleLoader().inspect(root.path);
-    expect(
-      loaded.validate().report.toJson(),
-      prepared.validation.report.toJson(),
-      reason: 'ordinary validation and preparation share the Spec report',
-    );
-  });
+      final loaded = await const OkfBundleLoader().inspect(root.path);
+      expect(
+        loaded.validate().report.toJson(),
+        prepared.validation.report.toJson(),
+        reason: 'ordinary validation and preparation share the Spec report',
+      );
+    },
+  );
 
   test('a Spec-invalid candidate is refused without changing a file', () async {
     final before = await _snapshot(root);
@@ -100,7 +100,9 @@ void main() {
 
     final loaded = await const OkfBundleLoader().inspect(root.path);
     expect(
-        loaded.validate().report.toJson(), prepared.validation.report.toJson());
+      loaded.validate().report.toJson(),
+      prepared.validation.report.toJson(),
+    );
   });
 
   test('prepare rejects file and directory path collisions', () async {
@@ -193,8 +195,10 @@ type: Reference
     );
     expect(prepared.validation.isConformant, isTrue);
     await changes.commit(prepared);
-    expect(await File(p.join(root.path, 'metrics', 'évolution.md')).exists(),
-        isTrue);
+    expect(
+      await File(p.join(root.path, 'metrics', 'évolution.md')).exists(),
+      isTrue,
+    );
   });
 
   test('an unresolved link is a conformant prepared change', () async {
@@ -212,8 +216,7 @@ type: Reference
     final prepared = (result as OkfPreparationReady).prepared;
     expect(prepared.validation.isConformant, isTrue);
     expect(
-      OkfGraph.fromBundle(prepared.candidate.toBundle())
-          .edges
+      OkfGraph.fromBundle(prepared.candidate.toBundle()).edges
           .singleWhere((edge) => edge.rawTarget.contains('future'))
           .resolution,
       OkfGraphResolution.unresolved,
@@ -263,30 +266,38 @@ type: Reference
   });
 
   test('commit rejects stale source state and reuse', () async {
-    final first = (await changes.prepare(root.path, _createChurn())
-            as OkfPreparationReady)
-        .prepared;
-    await _write(root, 'metrics/revenue.md',
-        '${await _read(root, 'metrics/revenue.md')}\n');
+    final first =
+        (await changes.prepare(root.path, _createChurn())
+                as OkfPreparationReady)
+            .prepared;
+    await _write(
+      root,
+      'metrics/revenue.md',
+      '${await _read(root, 'metrics/revenue.md')}\n',
+    );
 
     await expectLater(
       changes.commit(first),
       throwsA(isA<OkfStalePreparedChangeException>()),
     );
     expect(
-        await File(p.join(root.path, 'metrics', 'churn.md')).exists(), isFalse);
+      await File(p.join(root.path, 'metrics', 'churn.md')).exists(),
+      isFalse,
+    );
 
-    final second = (await changes.prepare(root.path, _createChurn())
-            as OkfPreparationReady)
-        .prepared;
+    final second =
+        (await changes.prepare(root.path, _createChurn())
+                as OkfPreparationReady)
+            .prepared;
     await changes.commit(second);
     expect(() => changes.commit(second), throwsStateError);
   });
 
   test('commit ignores nested lock metadata created after prepare', () async {
-    final prepared = (await changes.prepare(root.path, _createChurn())
-            as OkfPreparationReady)
-        .prepared;
+    final prepared =
+        (await changes.prepare(root.path, _createChurn())
+                as OkfPreparationReady)
+            .prepared;
     final nestedRoot = p.join(root.path, 'metrics');
 
     await const OkfBundleWriter().writeAll(
@@ -327,19 +338,21 @@ review:
 ---
 
 $_richBody''');
-    final prepared = (await changes.prepare(
-      root.path,
-      OkfBundleChangeSet(<OkfBundleChange>[
-        OkfUpdateConceptChange(
-          id: OkfConceptId('metrics/revenue'),
-          frontmatterChanges: const <String, Object?>{
-            'description': 'Recognized monthly revenue.',
-            'status': 'stable',
-          },
-        ),
-      ]),
-    ) as OkfPreparationReady)
-        .prepared;
+    final prepared =
+        (await changes.prepare(
+                  root.path,
+                  OkfBundleChangeSet(<OkfBundleChange>[
+                    OkfUpdateConceptChange(
+                      id: OkfConceptId('metrics/revenue'),
+                      frontmatterChanges: const <String, Object?>{
+                        'description': 'Recognized monthly revenue.',
+                        'status': 'stable',
+                      },
+                    ),
+                  ]),
+                )
+                as OkfPreparationReady)
+            .prepared;
 
     await changes.commit(prepared);
     final document = OkfDocument.parse(await _read(root, 'metrics/revenue.md'));
@@ -365,9 +378,10 @@ title: Note
 ---
 ''');
     await _write(root, 'other/index.md', authored);
-    final prepared = (await changes.prepare(root.path, _createChurn())
-            as OkfPreparationReady)
-        .prepared;
+    final prepared =
+        (await changes.prepare(root.path, _createChurn())
+                as OkfPreparationReady)
+            .prepared;
 
     await changes.commit(prepared);
 
@@ -376,23 +390,31 @@ title: Note
   });
 
   test('an idempotent change writes no file', () async {
-    final first = (await changes.prepare(
-      root.path,
-      OkfBundleChangeSet(<OkfBundleChange>[
-        OkfDeprecateConceptChange(id: OkfConceptId('metrics/revenue')),
-      ]),
-    ) as OkfPreparationReady)
-        .prepared;
+    final first =
+        (await changes.prepare(
+                  root.path,
+                  OkfBundleChangeSet(<OkfBundleChange>[
+                    OkfDeprecateConceptChange(
+                      id: OkfConceptId('metrics/revenue'),
+                    ),
+                  ]),
+                )
+                as OkfPreparationReady)
+            .prepared;
     await changes.commit(first);
     final before = await _snapshot(root);
 
-    final second = (await changes.prepare(
-      root.path,
-      OkfBundleChangeSet(<OkfBundleChange>[
-        OkfDeprecateConceptChange(id: OkfConceptId('metrics/revenue')),
-      ]),
-    ) as OkfPreparationReady)
-        .prepared;
+    final second =
+        (await changes.prepare(
+                  root.path,
+                  OkfBundleChangeSet(<OkfBundleChange>[
+                    OkfDeprecateConceptChange(
+                      id: OkfConceptId('metrics/revenue'),
+                    ),
+                  ]),
+                )
+                as OkfPreparationReady)
+            .prepared;
     final result = await changes.commit(second);
 
     expect(result.changedPaths, isEmpty);
@@ -401,13 +423,15 @@ title: Note
 
   test('an empty update is idempotent', () async {
     final before = await _snapshot(root);
-    final prepared = (await changes.prepare(
-      root.path,
-      OkfBundleChangeSet(<OkfBundleChange>[
-        OkfUpdateConceptChange(id: OkfConceptId('metrics/revenue')),
-      ]),
-    ) as OkfPreparationReady)
-        .prepared;
+    final prepared =
+        (await changes.prepare(
+                  root.path,
+                  OkfBundleChangeSet(<OkfBundleChange>[
+                    OkfUpdateConceptChange(id: OkfConceptId('metrics/revenue')),
+                  ]),
+                )
+                as OkfPreparationReady)
+            .prepared;
 
     final result = await changes.commit(prepared);
 
@@ -415,26 +439,30 @@ title: Note
     expect(await _snapshot(root), before);
   });
 
-  test('non-index updates preserve an authored index in the same directory',
-      () async {
-    final authored = '${await _read(root, 'metrics/index.md')}\n';
-    await _write(root, 'metrics/index.md', authored);
-    final prepared = (await changes.prepare(
-      root.path,
-      OkfBundleChangeSet(<OkfBundleChange>[
-        OkfUpdateConceptChange(
-          id: OkfConceptId('metrics/revenue'),
-          body: '# Revenue\n\nExpanded narrative.\n',
-        ),
-      ]),
-    ) as OkfPreparationReady)
-        .prepared;
+  test(
+    'non-index updates preserve an authored index in the same directory',
+    () async {
+      final authored = '${await _read(root, 'metrics/index.md')}\n';
+      await _write(root, 'metrics/index.md', authored);
+      final prepared =
+          (await changes.prepare(
+                    root.path,
+                    OkfBundleChangeSet(<OkfBundleChange>[
+                      OkfUpdateConceptChange(
+                        id: OkfConceptId('metrics/revenue'),
+                        body: '# Revenue\n\nExpanded narrative.\n',
+                      ),
+                    ]),
+                  )
+                  as OkfPreparationReady)
+              .prepared;
 
-    await changes.commit(prepared);
+      await changes.commit(prepared);
 
-    expect(await _read(root, 'metrics/index.md'), authored);
-    expect(prepared.candidate.indexes['metrics/index.md'], authored);
-  });
+      expect(await _read(root, 'metrics/index.md'), authored);
+      expect(prepared.candidate.indexes['metrics/index.md'], authored);
+    },
+  );
 
   test('changes that describe no state remain tool errors', () async {
     await expectLater(
@@ -453,29 +481,31 @@ title: Note
     );
   });
 
-  test('apply serializes preparation and commit for concurrent callers',
-      () async {
-    final results = await Future.wait(<Future<OkfBundleApplication>>[
-      changes.apply(root.path, _createChurn(id: 'metrics/churn')),
-      changes.apply(root.path, _createChurn(id: 'metrics/margin')),
-    ]);
+  test(
+    'apply serializes preparation and commit for concurrent callers',
+    () async {
+      final results = await Future.wait(<Future<OkfBundleApplication>>[
+        changes.apply(root.path, _createChurn(id: 'metrics/churn')),
+        changes.apply(root.path, _createChurn(id: 'metrics/margin')),
+      ]);
 
-    expect(results, everyElement(isA<OkfBundleApplied>()));
-    final loaded = await const OkfBundleLoader().inspect(root.path);
-    expect(
-      loaded.bundle.concepts.keys.map((id) => id.value),
-      containsAll(<String>['metrics/churn', 'metrics/margin']),
-    );
-    expect(
-      OkfLogDocument.parse(loaded.logs['log.md']!).entries.map(
-            (entry) => entry.description,
-          ),
-      containsAll(<String>[
-        '[Churn](metrics/churn.md)',
-        '[Churn](metrics/margin.md)',
-      ]),
-    );
-  });
+      expect(results, everyElement(isA<OkfBundleApplied>()));
+      final loaded = await const OkfBundleLoader().inspect(root.path);
+      expect(
+        loaded.bundle.concepts.keys.map((id) => id.value),
+        containsAll(<String>['metrics/churn', 'metrics/margin']),
+      );
+      expect(
+        OkfLogDocument.parse(
+          loaded.logs['log.md']!,
+        ).entries.map((entry) => entry.description),
+        containsAll(<String>[
+          '[Churn](metrics/churn.md)',
+          '[Churn](metrics/margin.md)',
+        ]),
+      );
+    },
+  );
 }
 
 const String _richBody = '''
@@ -532,9 +562,9 @@ okf_version: "0.2"
 ''');
 }
 
-Future<String> _read(Directory root, String relativePath) =>
-    File(p.joinAll(<String>[root.path, ...p.posix.split(relativePath)]))
-        .readAsString();
+Future<String> _read(Directory root, String relativePath) => File(
+  p.joinAll(<String>[root.path, ...p.posix.split(relativePath)]),
+).readAsString();
 
 Future<Map<String, String>> _snapshot(Directory root) async {
   final files = <String, String>{};
@@ -548,8 +578,9 @@ Future<Map<String, String>> _snapshot(Directory root) async {
 }
 
 Future<void> _write(Directory root, String relativePath, String content) async {
-  final file =
-      File(p.joinAll(<String>[root.path, ...p.posix.split(relativePath)]));
+  final file = File(
+    p.joinAll(<String>[root.path, ...p.posix.split(relativePath)]),
+  );
   await file.parent.create(recursive: true);
   await file.writeAsString(content);
 }

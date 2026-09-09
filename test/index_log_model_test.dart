@@ -114,17 +114,14 @@ void main() {
     final parsed = OkfIndexDocument.parse(generated['tables/index.md']!);
 
     expect(parsed.issues, isEmpty);
-    expect(
-      parsed.entries,
-      const <OkfIndexEntry>[
-        OkfIndexEntry(
-          type: 'BigQuery Table',
-          title: 'Events',
-          link: 'events.md',
-          description: 'Daily event rows.',
-        ),
-      ],
-    );
+    expect(parsed.entries, const <OkfIndexEntry>[
+      OkfIndexEntry(
+        type: 'BigQuery Table',
+        title: 'Events',
+        link: 'events.md',
+        description: 'Daily event rows.',
+      ),
+    ]);
   });
 
   test('parses angle-bracket destinations into canonical encoded links', () {
@@ -152,25 +149,22 @@ void main() {
       '# References\n\n* [Report](My Report.pdf) - Verbatim original.\n',
     );
 
-    expect(
-      parsed.issues,
-      const <OkfIndexIssue>[OkfIndexIssue.nonPortableLink],
-    );
+    expect(parsed.issues, const <OkfIndexIssue>[OkfIndexIssue.nonPortableLink]);
     expect(parsed.entries.single.link, 'My Report.pdf');
     expect(parsed.toDocument, throwsStateError);
   });
 
   test('writable links must percent-encode grammar-breaking characters', () {
     OkfIndexDocument document(String link) => OkfIndexDocument(
-          entries: <OkfIndexEntry>[
-            OkfIndexEntry(
-              type: 'Reference',
-              title: 'Original',
-              link: link,
-              description: '',
-            ),
-          ],
-        );
+      entries: <OkfIndexEntry>[
+        OkfIndexEntry(
+          type: 'Reference',
+          title: 'Original',
+          link: link,
+          description: '',
+        ),
+      ],
+    );
 
     for (final broken in <String>[
       'My Report.pdf',
@@ -192,22 +186,18 @@ void main() {
       '* [Thing](thing.md)\n',
     );
 
-    expect(
-      parsed.issues,
-      const <OkfIndexIssue>[
-        OkfIndexIssue.entryBeforeSection,
-        OkfIndexIssue.emptySection,
-        OkfIndexIssue.unrecognizedLine,
-      ],
-    );
+    expect(parsed.issues, const <OkfIndexIssue>[
+      OkfIndexIssue.entryBeforeSection,
+      OkfIndexIssue.emptySection,
+      OkfIndexIssue.unrecognizedLine,
+    ]);
     expect(parsed.entries.map((entry) => entry.type), <String>['Things']);
   });
 
   test('an index without sections reports a missing section', () {
-    expect(
-      OkfIndexDocument.parse('').issues,
-      const <OkfIndexIssue>[OkfIndexIssue.missingSection],
-    );
+    expect(OkfIndexDocument.parse('').issues, const <OkfIndexIssue>[
+      OkfIndexIssue.missingSection,
+    ]);
   });
 
   test('log parsing reports structural problems in document order', () {
@@ -216,20 +206,17 @@ void main() {
       '* Older.\n\n## 2026-08-14\n\nNarrative line.\n\n* Newer.\n',
     );
 
-    expect(
-      parsed.issues,
-      const <OkfLogIssue>[
-        OkfLogIssue.entryBeforeDate,
-        OkfLogIssue.invalidDate,
-        OkfLogIssue.emptyDate,
-        OkfLogIssue.notNewestFirst,
-        OkfLogIssue.unrecognizedLine,
-      ],
-    );
-    expect(
-      parsed.entries.map((entry) => entry.date),
-      <String>['2026-07-27', '2026-08-14'],
-    );
+    expect(parsed.issues, const <OkfLogIssue>[
+      OkfLogIssue.entryBeforeDate,
+      OkfLogIssue.invalidDate,
+      OkfLogIssue.emptyDate,
+      OkfLogIssue.notNewestFirst,
+      OkfLogIssue.unrecognizedLine,
+    ]);
+    expect(parsed.entries.map((entry) => entry.date), <String>[
+      '2026-07-27',
+      '2026-08-14',
+    ]);
   });
 
   test('emitted documents satisfy the rules that read them', () {
@@ -274,10 +261,10 @@ void main() {
   });
 
   test('a log without a title or dates reports both', () {
-    expect(
-      OkfLogDocument.parse('').issues,
-      const <OkfLogIssue>[OkfLogIssue.missingTitle, OkfLogIssue.missingDate],
-    );
+    expect(OkfLogDocument.parse('').issues, const <OkfLogIssue>[
+      OkfLogIssue.missingTitle,
+      OkfLogIssue.missingDate,
+    ]);
   });
 
   test('writable documents reject states their rules reject', () {
@@ -347,16 +334,13 @@ void main() {
     );
 
     expect(parsed.issues, contains(OkfLogIssue.invalidDate));
-    expect(
-      parsed.entries,
-      const <OkfLogEntry>[
-        OkfLogEntry(
-          date: '2026-02-30',
-          action: '',
-          description: 'Still represented.',
-        ),
-      ],
-    );
+    expect(parsed.entries, const <OkfLogEntry>[
+      OkfLogEntry(
+        date: '2026-02-30',
+        action: '',
+        description: 'Still represented.',
+      ),
+    ]);
     expect(parsed.toDocument, throwsStateError);
   });
 
@@ -409,10 +393,11 @@ extension: retained
 
     final parsed = OkfIndexDocument.parse(document.serialize());
 
-    expect(
-      document.entries.map((entry) => entry.type),
-      <String>['A', 'B', 'A'],
-    );
+    expect(document.entries.map((entry) => entry.type), <String>[
+      'A',
+      'B',
+      'A',
+    ]);
     expect(document.entries.first.title, 'First entry');
     expect(document.entries.first.description, 'First description.');
     expect(parsed.entries, document.entries);
@@ -440,21 +425,14 @@ extension: retained
     final parsed = OkfLogDocument.parse(document.serialize());
 
     expect(document.title, '# Audit Log');
-    expect(
-      document.entries,
-      const <OkfLogEntry>[
-        OkfLogEntry(
-          date: '2026-08-14',
-          action: 'Creation',
-          description: 'Newer entry.',
-        ),
-        OkfLogEntry(
-          date: '2026-07-27',
-          action: '',
-          description: 'Older entry.',
-        ),
-      ],
-    );
+    expect(document.entries, const <OkfLogEntry>[
+      OkfLogEntry(
+        date: '2026-08-14',
+        action: 'Creation',
+        description: 'Newer entry.',
+      ),
+      OkfLogEntry(date: '2026-07-27', action: '', description: 'Older entry.'),
+    ]);
     expect(parsed.title, document.title);
     expect(parsed.entries, document.entries);
     expect(parsed.issues, isEmpty);

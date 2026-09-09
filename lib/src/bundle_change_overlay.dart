@@ -53,10 +53,7 @@ final class OkfBundleChangeOverlay {
       }
       final path = applied.id.documentPath;
       final serialized = applied.document.serialize();
-      documents[applied.id] = OkfDocument.parse(
-        serialized,
-        sourcePath: path,
-      );
+      documents[applied.id] = OkfDocument.parse(serialized, sourcePath: path);
       files[path] = serialized;
       logEntries.add(applied.entry);
       if (applied.affectsIndex) {
@@ -115,12 +112,8 @@ final class OkfBundleChangeOverlay {
 
 /// Interprets one change against [documents], or returns `null` when the
 /// bundle already describes it.
-({
-  OkfConceptId id,
-  OkfDocument document,
-  OkfLogEntry entry,
-  bool affectsIndex,
-})? _applyChange(
+({OkfConceptId id, OkfDocument document, OkfLogEntry entry, bool affectsIndex})?
+_applyChange(
   Map<OkfConceptId, OkfDocument> documents,
   OkfBundleChange change,
   String day,
@@ -156,10 +149,10 @@ final class OkfBundleChangeOverlay {
       );
 
     case OkfLinkConceptsChange(
-        source: final source,
-        target: final target,
-        relationship: final relationship,
-      ):
+      source: final source,
+      target: final target,
+      relationship: final relationship,
+    ):
       _rejectReservedPath(target);
       final current = _requireDocument(documents, source);
       final targetDocument = documents[target];
@@ -201,10 +194,9 @@ final class OkfBundleChangeOverlay {
       final trimmedNote = note?.trim() ?? '';
       return (
         id: id,
-        document: _withFrontmatter(
-          current,
-          const <String, Object?>{'status': _deprecated},
-        ),
+        document: _withFrontmatter(current, const <String, Object?>{
+          'status': _deprecated,
+        }),
         entry: _logEntry(
           day,
           'Deprecated',
@@ -217,13 +209,11 @@ final class OkfBundleChangeOverlay {
 
 ({String type, String title, String description}) _indexProjection(
   OkfDocument document,
-) =>
-    (
-      type: _indexValue(document.frontmatter['type'], fallback: 'Other'),
-      title: _indexValue(document.frontmatter['title']),
-      description:
-          _indexValue(document.frontmatter['description'], fallback: ''),
-    );
+) => (
+  type: _indexValue(document.frontmatter['type'], fallback: 'Other'),
+  title: _indexValue(document.frontmatter['title']),
+  description: _indexValue(document.frontmatter['description'], fallback: ''),
+);
 
 String _indexValue(Object? value, {String? fallback}) =>
     value is String && value.trim().isNotEmpty ? value.trim() : fallback ?? '';
@@ -258,8 +248,10 @@ OkfDocument _withFrontmatter(
 /// resulting state is refused.
 String? _rewrittenLog(String? source, List<OkfLogEntry> entries) {
   if (source == null) {
-    return OkfLogDocument(title: _defaultLogTitle, entries: entries)
-        .serialize();
+    return OkfLogDocument(
+      title: _defaultLogTitle,
+      entries: entries,
+    ).serialize();
   }
 
   final OkfDocument document;
