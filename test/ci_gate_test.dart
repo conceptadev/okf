@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:test/test.dart';
 import 'package:yaml/yaml.dart';
 
@@ -197,6 +198,7 @@ void main() {
         contains('$releaseTool okf-build-binary'),
         contains('$releaseTool okf-deploy-github'),
         contains('$releaseTool okf-deploy-pub'),
+        contains('$releaseTool okf-deploy-homebrew'),
       ),
     );
     expect(
@@ -223,6 +225,7 @@ void main() {
         anyOf(
           contains('dart compile exe bin/okf.dart'),
           contains('bash tool/ci/publish-release.sh'),
+          contains('bash tool/ci/publish-homebrew.sh'),
           contains('dart pub publish --force'),
           contains('PUB_CREDENTIALS'),
         ),
@@ -236,6 +239,7 @@ void main() {
       allOf(
         contains('pkg.addStandaloneTasks()'),
         contains("'tool/ci/publish-release.sh'"),
+        contains("'tool/ci/publish-homebrew.sh'"),
         contains("const <String>['pub', 'publish', '--force']"),
       ),
     );
@@ -587,6 +591,83 @@ exit 0
       for (final platform in _platforms()) {
         expect(calls, contains(platform.asset));
       }
+    });
+
+    test('homebrew job releases the tap from the published assets', () async {
+      final source = File('.github/workflows/release.yml').readAsStringSync();
+      final workflow = loadYaml(source) as YamlMap;
+      final jobs = workflow['jobs'] as YamlMap;
+      final homebrew = jobs['homebrew'] as YamlMap;
+      final permissions = homebrew['permissions'] as YamlMap;
+
+      expect(homebrew['needs'], 'publish');
+      expect(permissions['contents'], 'read');
+      expect(
+        homebrew.toString(),
+        allOf(
+          contains('conceptadev/homebrew-tap'),
+          // The script parameter and the repository secret are named
+          // differently; a mismatch would hand the push an empty token.
+          contains(r'HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_GH_TOKEN }}'),
+          // Checksums must describe the bytes the release serves, so the
+          // formula is built from a download rather than the build artifacts.
+          contains('gh release download'),
+        ),
+      );
+
+      final temporary = Directory.systemTemp.createTempSync('okf-homebrew-');
+      addTearDown(() => temporary.deleteSync(recursive: true));
+      final distribution = Directory('${temporary.path}/dist')..createSync();
+      for (final platform in _platforms()) {
+        File('${distribution.path}/${platform.asset}')
+            .writeAsStringSync(platform.asset);
+      }
+
+      final render = await Process.run(
+        'bash',
+        <String>['tool/ci/homebrew-formula.sh', 'v9.9.9', distribution.path],
+        environment: <String, String>{'GH_REPO': 'conceptadev/okf'},
+      );
+      expect(render.exitCode, 0, reason: '${render.stderr}');
+      final formula = render.stdout as String;
+
+      expect(formula, contains('class Okf < Formula'));
+      // brew audit rejects a version that duplicates the one it scans from
+      // the download URL.
+      expect(formula, isNot(contains('version "9.9.9"')));
+      for (final platform in _platforms()) {
+        final digest = sha256.convert(utf8.encode(platform.asset)).toString();
+        expect(
+          formula,
+          contains(
+            'url "https://github.com/conceptadev/okf/releases/download/'
+            'v9.9.9/${platform.asset}"',
+          ),
+        );
+        expect(formula, contains('sha256 "$digest"'));
+      }
+
+      // A platform the formula cannot express must fail the release instead of
+      // silently shipping a tap that omits it.
+      final unsupported = Directory('${temporary.path}/manifest')..createSync();
+      File('${unsupported.path}/platforms.tsv').writeAsStringSync(
+        'Plan9\tRISCV\tplan9-latest\tokf-plan9-riscv\n',
+      );
+      for (final script in <String>['homebrew-formula.sh', 'sha256.sh']) {
+        File('tool/ci/$script').copySync('${unsupported.path}/$script');
+      }
+      File('${distribution.path}/okf-plan9-riscv').writeAsStringSync('asset');
+      final rejected = await Process.run(
+        'bash',
+        <String>[
+          '${unsupported.path}/homebrew-formula.sh',
+          'v9.9.9',
+          distribution.path,
+        ],
+        environment: <String, String>{'GH_REPO': 'conceptadev/okf'},
+      );
+      expect(rejected.exitCode, isNot(0));
+      expect(rejected.stderr, contains('no Homebrew predicate'));
     });
 
     test('CI shell scripts parse as Bash', () async {
