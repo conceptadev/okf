@@ -331,6 +331,19 @@ web crawling, and the reference HTML viewer are outside this package.
 
 ## Development
 
+Source files group related types with their behavior: document parsing and
+document values live together, as do graph queries, nodes, edges, and rendering.
+Finding values and rule metadata live in `finding.dart`; the internal rule
+engine lives in `spec_rules/`. Shared YAML limits and immutable snapshots live
+in `yaml_data.dart`. Filesystem operations and MCP transport have their own
+directories. Wire input models belong to MCP; domain types do not need a second
+set of models or DTOs solely for moving values between internal calls.
+
+Tests mirror those boundaries: domain tests live at `test/`, with `io/`,
+`mcp/`, and `spec_rules/` subdirectories matching the source. Repository
+automation checks live in `test/ci/`; process helpers live in `test/support/`.
+Run `dart test` from the package root to include every suite.
+
 MCP inputs use Ack's `@AckInfer()` schemas in `lib/src/mcp/inputs.dart`.
 The schema defines both runtime parsing and the JSON Schema advertised to
 clients. Schema-first generation preserves the distinction between omitted
@@ -354,7 +367,9 @@ permissive so parsing can retain malformed content for validation.
 
 Ack 1.2 supports validation in generative constructors, but requires that
 constructor shape and rejects custom methods that override generated members.
-IDs, diagnostics, and documents keep their existing constructors and formatting.
+IDs, diagnostics, and documents retain their domain validation and custom
+formatting; switching their constructor syntax alone does not make them
+compatible with generated members.
 
 Legacy citation extraction is an optional v0.1 compatibility feature permitted
 by OKF v0.2 §13.1. Current provenance comes from `sources` frontmatter.

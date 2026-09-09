@@ -547,7 +547,7 @@ exit "\${FAKE_ENGINE_EXIT:-0}"
         expect(source, contains('release-matrix.sh'));
         expect(
           File('.pubignore').readAsLinesSync(),
-          contains('test/ci_gate_test.dart'),
+          contains('test/ci/gate_test.dart'),
         );
 
         final dependabot =

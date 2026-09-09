@@ -30,12 +30,6 @@ final class OkfBundleChangeApplier {
   /// Supplies the date generated log entries are recorded under.
   final DateTime Function() clock;
 
-  /// Builds and validates a complete candidate without writing any file.
-  Future<OkfBundlePreparation> prepare(
-    String rootPath,
-    OkfBundleChangeSet changes,
-  ) => _prepare(rootPath, changes);
-
   /// Commits exactly the bytes bound into [prepared].
   Future<OkfBundleCommitResult> commit(OkfPreparedChange prepared) =>
       OkfBundleLock.write(
@@ -53,7 +47,7 @@ final class OkfBundleChangeApplier {
     String rootPath,
     OkfBundleChangeSet changes,
   ) => OkfBundleLock.write(rootPath, () async {
-    final preparation = await _prepare(rootPath, changes);
+    final preparation = await prepare(rootPath, changes);
     return switch (preparation) {
       OkfPreparationReady(prepared: final prepared) => OkfBundleApplied(
         result: await _commitLocked(prepared),
@@ -82,7 +76,8 @@ final class OkfBundleChangeApplier {
     return OkfBundleCommitResult(changedPaths: written.changedPaths);
   }
 
-  Future<OkfBundlePreparation> _prepare(
+  /// Builds and validates a complete candidate without writing any file.
+  Future<OkfBundlePreparation> prepare(
     String rootPath,
     OkfBundleChangeSet changes,
   ) async {
@@ -102,7 +97,7 @@ final class OkfBundleChangeApplier {
     }
 
     final changedFiles = Map<String, String>.unmodifiable(overlay.files);
-    final candidate = _candidate(
+    final candidate = OkfPreparedCandidate._fromSnapshot(
       loaded: loaded,
       source: sourceAfter,
       changedFiles: changedFiles,
@@ -213,43 +208,43 @@ Future<void> _validateCandidatePaths(
   }
 }
 
-OkfPreparedCandidate _candidate({
-  required OkfBundleLoadResult loaded,
-  required _BundleSnapshot source,
-  required Map<String, String> changedFiles,
-}) {
-  String preparedText(String path, String fallback) =>
-      changedFiles[path] ?? source.text(path) ?? fallback;
-
-  return OkfPreparedCandidate._(
-    concepts: <String, String>{
-      for (final entry in loaded.documents.entries)
-        entry.key: preparedText(entry.key, entry.value.serialize()),
-      for (final entry in changedFiles.entries)
-        if (_isConceptPath(entry.key)) entry.key: entry.value,
-    },
-    indexes: <String, String>{
-      for (final entry in loaded.indexes.entries)
-        entry.key: preparedText(entry.key, entry.value),
-      for (final entry in changedFiles.entries)
-        if (p.posix.basename(entry.key) == 'index.md') entry.key: entry.value,
-    },
-    logs: <String, String>{
-      for (final entry in loaded.logs.entries)
-        entry.key: preparedText(entry.key, entry.value),
-      for (final entry in changedFiles.entries)
-        if (p.posix.basename(entry.key) == 'log.md') entry.key: entry.value,
-    },
-    assets: loaded.assets.toSet(),
-  );
-}
-
 /// An immutable view of the complete candidate prepared for a bundle write.
 ///
 /// Concept values are the exact serialized Markdown bytes represented by the
 /// candidate. [toBundle] returns a detached in-memory copy for downstream
 /// inspection; changing that copy cannot change a prepared write.
 final class OkfPreparedCandidate {
+  factory OkfPreparedCandidate._fromSnapshot({
+    required OkfBundleLoadResult loaded,
+    required _BundleSnapshot source,
+    required Map<String, String> changedFiles,
+  }) {
+    String preparedText(String path, String fallback) =>
+        changedFiles[path] ?? source.text(path) ?? fallback;
+
+    return OkfPreparedCandidate._(
+      concepts: <String, String>{
+        for (final entry in loaded.documents.entries)
+          entry.key: preparedText(entry.key, entry.value.serialize()),
+        for (final entry in changedFiles.entries)
+          if (_isConceptPath(entry.key)) entry.key: entry.value,
+      },
+      indexes: <String, String>{
+        for (final entry in loaded.indexes.entries)
+          entry.key: preparedText(entry.key, entry.value),
+        for (final entry in changedFiles.entries)
+          if (p.posix.basename(entry.key) == 'index.md') entry.key: entry.value,
+      },
+      logs: <String, String>{
+        for (final entry in loaded.logs.entries)
+          entry.key: preparedText(entry.key, entry.value),
+        for (final entry in changedFiles.entries)
+          if (p.posix.basename(entry.key) == 'log.md') entry.key: entry.value,
+      },
+      assets: loaded.assets.toSet(),
+    );
+  }
+
   OkfPreparedCandidate._({
     required Map<String, String> concepts,
     required Map<String, String> indexes,

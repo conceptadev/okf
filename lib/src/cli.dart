@@ -93,21 +93,21 @@ final class OkfCli {
         _ => throw _OkfUsageException('Unknown command: ${command.name ?? ''}'),
       };
     } on ArgParserException catch (error) {
-      _err('okf: ${_terminalSafe(error.message)}');
+      _err('okf: ${escapeControlCharacters(error.message)}');
       _err('Run "okf --help" for usage.');
       return OkfExitCode.usage.value;
     } on _OkfUsageException catch (error) {
-      _err('okf: ${_terminalSafe(error.message)}');
+      _err('okf: ${escapeControlCharacters(error.message)}');
       _err('Run "okf --help" for usage.');
       return OkfExitCode.usage.value;
     } on FileSystemException catch (error) {
       _err('okf: ${_fileSystemMessage(error)}');
       return OkfExitCode.usage.value;
     } on ArgumentError catch (error) {
-      _err('okf: ${_terminalSafe('${error.message ?? error}')}');
+      _err('okf: ${escapeControlCharacters('${error.message ?? error}')}');
       return OkfExitCode.usage.value;
     } on Exception catch (error) {
-      _err('okf: ${_terminalSafe('$error')}');
+      _err('okf: ${escapeControlCharacters('$error')}');
       return OkfExitCode.usage.value;
     }
   }
@@ -514,7 +514,5 @@ String _fileSystemMessage(FileSystemException error) {
   final message = path == null || path.isEmpty
       ? error.message
       : '${error.message}: $path';
-  return _terminalSafe(message);
+  return escapeControlCharacters(message);
 }
-
-String _terminalSafe(String value) => escapeControlCharacters(value);

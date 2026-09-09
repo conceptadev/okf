@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'ack_error.dart';
 import 'bundle.dart';
 import 'concept_id.dart';
+import 'control_characters.dart';
 import 'link_path.dart';
 
 /// Current schema version emitted by [OkfGraph.toJson].
@@ -563,7 +564,7 @@ _ResolvedTarget _resolveTarget(
     }
     if (segment.contains('/') ||
         segment.contains(r'\') ||
-        segment.runes.any((rune) => rune < 0x20 || rune == 0x7f)) {
+        segment.runes.any(isControlCharacter)) {
       return const _ResolvedTarget(OkfGraphResolution.invalid);
     }
     if (segment == '..') {
@@ -670,7 +671,7 @@ String _visibleControlCharacters(String value) {
   for (final rune in value.runes) {
     if (rune == 0x0a) {
       output.write('\n');
-    } else if (rune < 0x20 || rune >= 0x7f && rune <= 0x9f) {
+    } else if (isControlCharacter(rune)) {
       output
         ..write(r'\u{')
         ..write(rune.toRadixString(16).padLeft(4, '0'))

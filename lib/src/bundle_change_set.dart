@@ -1,6 +1,6 @@
 import 'concept_id.dart';
 import 'document.dart';
-import 'yaml_snapshot.dart';
+import 'yaml_data.dart';
 
 /// A prospective mutation included in an [OkfBundleChangeSet].
 sealed class OkfBundleChange {
@@ -69,31 +69,19 @@ final class OkfLinkConceptsChange extends OkfBundleChange {
   ///
   /// Surrounding whitespace is removed from [relationship], whose resulting
   /// value must not be empty.
-  factory OkfLinkConceptsChange({
-    required OkfConceptId source,
-    required OkfConceptId target,
+  OkfLinkConceptsChange({
+    required this.source,
+    required this.target,
     required String relationship,
-  }) {
-    final trimmedRelationship = relationship.trim();
-    if (trimmedRelationship.isEmpty) {
+  }) : relationship = relationship.trim() {
+    if (this.relationship.isEmpty) {
       throw ArgumentError.value(
         relationship,
         'relationship',
         'must not be empty',
       );
     }
-    return OkfLinkConceptsChange._(
-      source: source,
-      target: target,
-      relationship: trimmedRelationship,
-    );
   }
-
-  const OkfLinkConceptsChange._({
-    required this.source,
-    required this.target,
-    required this.relationship,
-  });
 
   /// The concept that owns the relationship.
   final OkfConceptId source;

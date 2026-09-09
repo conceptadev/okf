@@ -155,6 +155,36 @@ See [the café](tables/caf%C3%A9.md), [missing](missing.md),
     expect(decoded.resolvedPath, 'references/a b.txt');
   });
 
+  test('classifies control characters in local targets as invalid', () {
+    final targets = <String>[
+      for (final control in <String>['\u0000', '\u007f', '\u0085', '\u009f'])
+        for (final spelling in <String>[control, Uri.encodeComponent(control)])
+          'refs/bad${spelling}name.md',
+    ];
+    final bundle = OkfBundle.fromDocuments(<String, OkfDocument>{
+      'overview.md': OkfDocument(
+        frontmatter: <String, Object?>{
+          'type': 'Reference',
+          'sources': <Object?>[
+            for (final target in targets) <String, Object?>{'resource': target},
+          ],
+        },
+      ),
+    });
+
+    final graph = OkfGraph.fromBundle(bundle);
+    expect(graph.edges.map((edge) => edge.rawTarget), unorderedEquals(targets));
+    for (final edge in graph.edges) {
+      expect(
+        edge.resolution,
+        OkfGraphResolution.invalid,
+        reason: edge.rawTarget,
+      );
+      expect(edge.resolvedPath, isNull);
+      expect(edge.targetConcept, isNull);
+    }
+  });
+
   test('classifies prose source descriptors as descriptors even when they '
       'contain slashes', () {
     // Verbatim sources[].resource descriptors from the first real

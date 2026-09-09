@@ -1,13 +1,12 @@
 import '../finding.dart';
 import '../index_log.dart';
-import 'context.dart';
 import 'rule.dart';
 
 /// Fixed Spec rules over reserved `index.md` and `log.md` documents, in
 /// validation order.
 final List<OkfSpecRule> reservedRules = List<OkfSpecRule>.unmodifiable(
   <OkfSpecRule>[
-    specRule(
+    OkfSpecRule(
       code: 'invalid-reserved-document',
       prose: 'Reserved index and log documents must be parseable.',
       severity: OkfFindingSeverity.error,
@@ -190,7 +189,7 @@ OkfSpecRule _indexRule(
   String prose,
   OkfFindingSeverity severity,
   _ReservedCheck<ParsedIndexDocument> check,
-) => specRule(
+) => OkfSpecRule(
   code: code,
   prose: prose,
   severity: severity,
@@ -204,7 +203,7 @@ OkfSpecRule _logRule(
   String prose,
   OkfFindingSeverity severity,
   _ReservedCheck<ParsedLogDocument> check,
-) => specRule(
+) => OkfSpecRule(
   code: code,
   prose: prose,
   severity: severity,
@@ -212,10 +211,10 @@ OkfSpecRule _logRule(
       _checkEach(definition, context.logDocuments, check),
 );
 
-/// Runs [check] over every document in [files] that parses; unparseable
+/// Runs [check] over every document in [documents] that parses; unparseable
 /// documents are reported by `okf/invalid-reserved-document` alone.
 Iterable<OkfFinding> _checkEach<T extends ParsedReservedDocument>(
-  OkfSpecFindingDefinition definition,
+  OkfSpecRuleDescriptor definition,
   List<T> documents,
   _ReservedCheck<T> check,
 ) => <OkfFinding>[

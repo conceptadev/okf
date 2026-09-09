@@ -9,6 +9,7 @@ import '../bundle_path.dart';
 import '../document.dart';
 import '../finding.dart';
 import '../spec_rules/load_findings.dart';
+import '../spec_rules/rule.dart' show SpecRuleFindings;
 import '../validator.dart';
 import 'bundle_lock.dart';
 

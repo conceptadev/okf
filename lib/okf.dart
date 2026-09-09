@@ -10,6 +10,5 @@ export 'src/graph.dart';
 export 'src/index_generator.dart';
 export 'src/index_log.dart';
 export 'src/metadata.dart';
-export 'src/spec_rule.dart';
 export 'src/validator.dart';
 export 'src/yaml_emitter.dart';

@@ -111,7 +111,7 @@ final class OkfBundleWriter {
 
     try {
       for (final entry in normalizedFiles.entries) {
-        final destination = _destination(root, entry.key);
+        final destination = File(_destinationPath(root, entry.key));
         await _rejectLinks(root, entry.key);
         final desiredBytes = utf8.encode(entry.value);
         final currentBytes = await destination.exists()
@@ -224,7 +224,7 @@ final class OkfBundleWriter {
 
     for (final path in paths) {
       await _rejectLinks(root, path);
-      final destination = _destination(root, path);
+      final destination = File(_destinationPath(root, path));
       files[path] = await destination.exists()
           ? await destination.readAsBytes()
           : null;
@@ -252,7 +252,7 @@ final class OkfBundleWriter {
     for (final entry in captured.files.entries.toList().reversed) {
       try {
         await _rejectLinks(root, entry.key);
-        final destination = _destination(root, entry.key);
+        final destination = File(_destinationPath(root, entry.key));
         final original = entry.value;
         if (original == null) {
           if (await destination.exists()) {
@@ -479,9 +479,6 @@ final class _StagedFile {
   final File destination;
   final File temporary;
 }
-
-File _destination(Directory root, String relativePath) =>
-    File(_destinationPath(root, relativePath));
 
 String _destinationPath(Directory root, String relativePath) =>
     p.joinAll(<String>[root.path, ...p.posix.split(relativePath)]);

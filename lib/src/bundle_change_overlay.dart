@@ -127,7 +127,11 @@ _applyChange(
       return (
         id: id,
         document: document,
-        entry: _logEntry(day, 'Created', _conceptLink(id, document)),
+        entry: OkfLogEntry(
+          date: day,
+          action: 'Created',
+          description: _conceptLink(id, document),
+        ),
         affectsIndex: true,
       );
 
@@ -144,7 +148,11 @@ _applyChange(
       return (
         id: id,
         document: updated,
-        entry: _logEntry(day, 'Updated', _conceptLink(id, updated)),
+        entry: OkfLogEntry(
+          date: day,
+          action: 'Updated',
+          description: _conceptLink(id, updated),
+        ),
         affectsIndex: _indexProjection(current) != _indexProjection(updated),
       );
 
@@ -176,10 +184,11 @@ _applyChange(
         document: _withFrontmatter(current, <String, Object?>{
           'sources': <Object?>[...declared, link],
         }),
-        entry: _logEntry(
-          day,
-          'Linked',
-          '${_conceptLink(source, current)} $relationship '
+        entry: OkfLogEntry(
+          date: day,
+          action: 'Linked',
+          description:
+              '${_conceptLink(source, current)} $relationship '
               '${_conceptLink(target, targetDocument)}',
         ),
         affectsIndex: false,
@@ -197,10 +206,10 @@ _applyChange(
         document: _withFrontmatter(current, const <String, Object?>{
           'status': _deprecated,
         }),
-        entry: _logEntry(
-          day,
-          'Deprecated',
-          trimmedNote.isEmpty ? link : '$link — $trimmedNote',
+        entry: OkfLogEntry(
+          date: day,
+          action: 'Deprecated',
+          description: trimmedNote.isEmpty ? link : '$link — $trimmedNote',
         ),
         affectsIndex: false,
       );
@@ -300,9 +309,6 @@ bool _sameLink(Object? entry, Map<String, Object?> link) =>
     entry is Map<Object?, Object?> &&
     entry['resource'] == link['resource'] &&
     entry['relationship'] == link['relationship'];
-
-OkfLogEntry _logEntry(String day, String action, String description) =>
-    OkfLogEntry(date: day, action: action, description: description);
 
 String _conceptLink(OkfConceptId id, OkfDocument? document) {
   final String title;

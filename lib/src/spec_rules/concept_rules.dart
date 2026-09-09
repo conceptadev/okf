@@ -224,7 +224,7 @@ OkfSpecRule _conceptRule(
   String prose,
   OkfFindingSeverity severity,
   _ConceptCheck check,
-) => specRule(
+) => OkfSpecRule(
   code: code,
   prose: prose,
   severity: severity,

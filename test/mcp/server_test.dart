@@ -9,7 +9,7 @@ import 'package:okf/okf.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
-import 'support.dart';
+import '../support.dart';
 
 void main() {
   late Directory sandbox;

@@ -9,7 +9,7 @@ import 'bundle_path.dart';
 /// with tooling that implements the narrower ASCII convention.
 final class OkfConceptId implements Comparable<OkfConceptId> {
   /// Creates an ID from a bundle-relative path without a `.md` suffix.
-  factory OkfConceptId(String value) {
+  OkfConceptId(this.value) {
     validateBundlePath(value);
     if (value.endsWith('.md')) {
       throw FormatException(
@@ -17,10 +17,7 @@ final class OkfConceptId implements Comparable<OkfConceptId> {
         value,
       );
     }
-    return OkfConceptId._(value);
   }
-
-  const OkfConceptId._(this.value);
 
   /// Creates an ID from a bundle-relative concept document path.
   factory OkfConceptId.fromDocumentPath(String path) {

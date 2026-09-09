@@ -1,7 +1,7 @@
 import 'dart:collection';
 import 'dart:convert';
 
-import 'yaml_limits.dart';
+import 'yaml_data.dart';
 
 /// Preferred top-level frontmatter order used by OKF producer tooling.
 ///

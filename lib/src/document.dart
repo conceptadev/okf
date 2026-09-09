@@ -5,8 +5,8 @@ import 'package:ack_annotations/ack_annotations.dart';
 import 'package:yaml/yaml.dart';
 
 import 'metadata.dart';
+import 'yaml_data.dart';
 import 'yaml_emitter.dart';
-import 'yaml_limits.dart';
 
 part 'document.ack.dart';
 part 'document.ack.g.dart';

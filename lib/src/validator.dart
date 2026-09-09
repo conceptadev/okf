@@ -1,8 +1,6 @@
 import 'bundle.dart';
 import 'finding.dart';
-import 'spec_rule.dart';
 import 'spec_rules/concept_rules.dart';
-import 'spec_rules/context.dart';
 import 'spec_rules/load_findings.dart';
 import 'spec_rules/reserved_rules.dart';
 import 'spec_rules/rule.dart';
@@ -14,7 +12,7 @@ final List<OkfSpecRule> _validationRules = List<OkfSpecRule>.unmodifiable(
 /// Read-only metadata for the complete fixed OKF Spec finding set.
 final List<OkfSpecRuleDescriptor> okfSpecRuleDescriptors =
     List<OkfSpecRuleDescriptor>.unmodifiable(<OkfSpecRuleDescriptor>[
-      ...loadFindingDefinitions.map((definition) => definition.descriptor),
+      ...loadFindingDescriptors,
       ..._validationRules.map((rule) => rule.descriptor),
     ]);
 
