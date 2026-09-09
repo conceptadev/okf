@@ -60,6 +60,11 @@ jobs:
       - name: Publish dry run
         run: dart pub publish --dry-run
 
+      # A second setup-dart in the same job re-downloads the SDK into the same
+      # temp path and fails on the leftover from the first one.
+      - name: Clean Dart SDK temp files
+        run: rm -f ${{ runner.temp }}/dartsdk-*.zip
+
       - name: Setup Dart (release tool)
         uses: dart-lang/setup-dart@v1
         with:

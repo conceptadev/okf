@@ -29,7 +29,8 @@ void main() {
     );
     expect(File('README.md').readAsStringSync(), contains('okf@v$version'));
     expect(
-      File('CHANGELOG.md').readAsStringSync(),
+      // Normalized: a Windows runner checks the tree out with CRLF.
+      File('CHANGELOG.md').readAsStringSync().replaceAll('\r\n', '\n'),
       startsWith('# Changelog\n\n## $version\n'),
       reason: 'cli_pkg builds the release notes from the first entry',
     );
