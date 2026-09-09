@@ -42,7 +42,9 @@ void main() {
       'changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1',
     );
     final inputs = action['with'] as YamlMap;
-    expect(inputs['github-token'], r'${{ secrets.GITHUB_TOKEN }}');
+    // The automatic GITHUB_TOKEN cannot open pull requests in this
+    // organization, so the release PR is created with a user-managed token.
+    expect(inputs['github-token'], r'${{ secrets.HOMEBREW_TAP_GH_TOKEN }}');
     expect(inputs['version-script'], 'npm run release:version');
     expect(inputs['publish-script'], 'npm run release:tag');
     expect(inputs['create-github-releases'], false);
