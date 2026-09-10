@@ -93,7 +93,7 @@ Gate a repository on OKF Spec conformance with one step and no configuration:
 
 ```yaml
 steps:
-  - uses: conceptadev/okf@v0.4.0
+  - uses: conceptadev/okf@v0.4.1
 ```
 
 The action downloads the released `okf` archive for the ref in `uses`, unpacks

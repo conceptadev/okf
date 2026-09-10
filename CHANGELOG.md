@@ -1,4 +1,4 @@
-## 0.4.0
+## 0.4.1
 
 - Use Ack schemas for graph-query parsing and generated, typed MCP arguments.
   Each input schema owns runtime constraints and the advertised JSON Schema.
