@@ -17,6 +17,17 @@ runs:
         # Work around dart-lang/setup-dart#198 in composite actions.
         problem-matcher: false
 
+    # setup-dart registers the job's OIDC token for the whole pub.dev host
+    # when the caller grants `id-token: write`, and pub.dev now answers the
+    # bucket-served version-listing and advisory reads with HTTP 403 whenever
+    # the request carries a bearer token:
+    # https://github.com/dart-lang/pub-dev/issues/9576. Resolution must run
+    # uncredentialed; release.yml mints a fresh token just before it uploads.
+    # A no-op in the jobs that never had a token.
+    - name: Drop the pub.dev credential before dependency resolution
+      run: dart pub token remove https://pub.dev || true
+      shell: bash
+
     - name: Get dependencies
       run: dart pub get
       shell: bash
