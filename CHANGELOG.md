@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.4.0
+
+- Use Ack schemas for graph-query parsing and generated, typed MCP arguments.
+  Each input schema owns runtime constraints and the advertised JSON Schema.
+  Partial updates retain omitted fields, and OKF Spec findings and tolerant
+  metadata behavior remain unchanged. Concept IDs stay encoded as strings, and
+  invalid IDs and graph-query fields are reported with their specific paths and
+  validation reasons.
+- Generate equality, hashing, `copyWith`, diagnostic strings, and JSON adapters
+  for index entries, log entries, and legacy citation values with Ack. Use the
+  generated copies when normalizing writable index and log entries, and verify
+  all generated model parts in CI. Const constructors, tolerant parsing,
+  Markdown output, and optional v0.1 citation compatibility are preserved;
+  concept IDs, diagnostics, and documents retain their existing validated
+  constructors and custom formatting.
+- Consolidate internal rule metadata, execution context, and YAML value helpers
+  while preserving the public package exports. Remove redundant construction
+  wrappers and use normal constructors where direct initialization suffices.
+  Align IO, MCP, and rule tests with their source modules and consolidate the
+  index/log contract suites without changing their assertions.
+- Classify local graph targets containing raw or percent-encoded C1 control
+  characters as invalid, matching bundle-path validation, instead of
+  unresolved.
+- Raise the minimum supported Dart SDK from 3.4 to 3.9 for Ack 1.2.
+
 ## 0.3.0
 
 - Narrow MCP `list-concepts` with optional `prefix`, `type`, and `query`
