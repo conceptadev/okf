@@ -1,3 +1,10 @@
+## 0.4.2
+
+- No changes to the package. This release completes the deployment pipeline:
+  the macOS job now holds the `contents: write` permission its uploads need,
+  so 0.4.1's macOS archives and Homebrew formula, which were published by
+  hand, are produced by CI again.
+
 ## 0.4.1
 
 - Use Ack schemas for graph-query parsing and generated, typed MCP arguments.
