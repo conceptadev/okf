@@ -3,6 +3,5 @@
 build/
 coverage/
 doc/api/
-node_modules/
 pubspec.lock
 !tool/release/pubspec.lock

@@ -1,5 +1,4 @@
 .dart_tool/
-.changeset/
 .git/
 .github/
 action.yml
@@ -7,8 +6,5 @@ build/
 coverage/
 doc/
 docs/
-node_modules/
-package-lock.json
-package.json
 tool/
 test/ci/gate_test.dart
