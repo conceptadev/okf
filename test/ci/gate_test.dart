@@ -103,6 +103,18 @@ void main() {
         contains(r'GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GH_TOKEN }}'),
       ),
     );
+
+    // Every pkg-github-* task uploads assets to the release, which the
+    // automatic token may only do with contents: write. deploy-macos shipped
+    // once with contents: read and failed after pub.dev had already published.
+    for (final name in const <String>['release', 'deploy-macos']) {
+      final job = jobs[name] as YamlMap;
+      expect(
+        (job['permissions'] as YamlMap)['contents'],
+        'write',
+        reason: '$name uploads release assets',
+      );
+    }
     // Against the parsed workflow, not the source: comments legitimately name
     // the mechanisms this asserts the workflow no longer runs.
     expect(

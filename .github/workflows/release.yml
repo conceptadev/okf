@@ -73,7 +73,9 @@ jobs:
     runs-on: macos-latest
     needs: release
     permissions:
-      contents: read
+      # pkg-github-macos uploads assets to the release the previous job
+      # created, which is a write to repository contents.
+      contents: write
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
