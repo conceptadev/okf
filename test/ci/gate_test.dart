@@ -31,8 +31,10 @@ void main() {
     expect(
       // Normalized: a Windows runner checks the tree out with CRLF.
       File('CHANGELOG.md').readAsStringSync().replaceAll('\r\n', '\n'),
-      startsWith('# Changelog\n\n## $version\n'),
-      reason: 'cli_pkg builds the release notes from the first entry',
+      startsWith('## $version\n'),
+      reason:
+          'cli_pkg scans CHANGELOG.md from offset 0 for "## <version>", '
+          'so no title heading may precede the first entry',
     );
     expect(File('package.json').existsSync(), false);
     expect(Directory('.changeset').existsSync(), false);

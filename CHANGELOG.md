@@ -1,5 +1,3 @@
-# Changelog
-
 ## 0.4.0
 
 - Use Ack schemas for graph-query parsing and generated, typed MCP arguments.
