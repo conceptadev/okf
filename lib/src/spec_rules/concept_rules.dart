@@ -293,7 +293,5 @@ bool _isIsoDateTime(Object? value) {
   if (value is DateTime) {
     return true;
   }
-  return value is String &&
-      value.contains('T') &&
-      DateTime.tryParse(value) != null;
+  return value is String && parseIsoDateTime(value) != null;
 }
