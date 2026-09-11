@@ -58,3 +58,17 @@ final _basicDateTime = RegExp(
   r'^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(?:(\d{2})(?:\.\d+)?)?'
   r'(?:Z|[+-](\d{2})(\d{2})?)?$',
 );
+
+/// Parses an OKF timestamp as an instant.
+///
+/// Accepts [parseIsoDateTime] values and, for bundles written before OKF
+/// revision 62432a0, a `YYYY-MM-DD` date read as midnight UTC.
+DateTime? parseOkfInstant(String? value) =>
+    parseIsoDateTime(value) ?? parseIsoDate(value);
+
+/// Whether [value] is a valid date and time with `Z` or a numeric UTC offset.
+bool hasUtcOffset(String value) =>
+    parseIsoDateTime(value) != null &&
+    RegExp(
+      r'(?:Z|[+-]\d{2}(?::?\d{2})?)$',
+    ).hasMatch(value.substring(value.indexOf('T')));

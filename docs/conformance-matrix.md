@@ -1,7 +1,7 @@
 # OKF 0.2 conformance matrix
 
 This matrix pins consumer behavior to Google OKF revision
-`3fcbb9f828c2f23d109c855ee403c3a4c81f3a96`. “Error” means an OKF Spec
+`62432a095456147ee71e70ac6e4dc0d2dea3ac30`. “Error” means an OKF Spec
 conformance failure. “Advisory” is surfaced guidance that never changes
 `OkfSpecValidation.isConformant`.
 
@@ -12,6 +12,8 @@ conformance failure. “Advisory” is surfaced guidance that never changes
 | §4.1, §11.2 | Every concept has a non-empty `type`. | `okf/missing-type` error. | `test/validator_test.dart`, `test/cli_test.dart` |
 | §4.1, §11 | Unknown type values are tolerated. | Conformant. | `test/conformance_test.dart` |
 | §4.1, §11 | Unknown frontmatter keys are preserved and tolerated. | Conformant and round-tripped. | `test/conformance_test.dart`, `test/document_test.dart` |
+| §5 | Every timestamp is an ISO 8601 datetime with a UTC offset. A date-only `stale_after`, `usage_window` boundary or `last_modified` from an earlier revision is read as midnight UTC; `generated.at` and `verified[].at` have always required a time, so a date-only value there carries no instant. | `okf/timestamp-without-offset` advisory; still conformant. `okf validate --strict` fails on it. `okf format --migrate-timestamps` rewrites date-only values, which can make a date-only `verified[].at` count as a verification again and change `trust_tier`. | `test/timestamps_test.dart`, `test/cli_test.dart` |
+| §5.5 | A concept is stale when `now >= stale_after`, compared as instants. | `OkfMetadata.isStale`. | `test/metadata_test.dart` |
 | §5.2, §11 | Treat a bare `verified` mapping as one event. | Conformant; one normalized verification. | `test/conformance_test.dart`, `test/metadata_test.dart` |
 | §5.3, §11 | Missing optional provenance, trust, lifecycle, and computation families are accepted. | Conformant. | `test/conformance_test.dart` |
 | §6.1, §11 | Broken cross-links are accepted. | Conformant; graph retains an unresolved edge. | `test/conformance_test.dart`, `test/graph_test.dart` |

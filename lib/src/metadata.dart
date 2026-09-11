@@ -89,10 +89,14 @@ final class OkfUsageWindow {
   final Map<String, Object?> raw;
 
   /// Inclusive beginning of the window, when parseable.
-  DateTime? get from => _parseDate(raw['from']);
+  ///
+  /// A date-only value is read as midnight UTC.
+  DateTime? get from => _parseInstant(raw['from']);
 
   /// Inclusive end of the window, when parseable.
-  DateTime? get to => _parseDate(raw['to']);
+  ///
+  /// A date-only value is read as midnight UTC.
+  DateTime? get to => _parseInstant(raw['to']);
 
   /// The original scalar form of `from`.
   String? get rawFrom => _scalarString(raw['from']);
@@ -133,7 +137,9 @@ final class OkfSource {
       : num.tryParse(_scalarString(raw['usage_count']) ?? '');
 
   /// When the source itself last changed, when parseable.
-  DateTime? get lastModified => _parseDate(raw['last_modified']);
+  ///
+  /// A date-only value is read as midnight UTC.
+  DateTime? get lastModified => _parseInstant(raw['last_modified']);
 
   /// The original scalar form of `last_modified`.
   String? get rawLastModified => _scalarString(raw['last_modified']);
@@ -401,27 +407,30 @@ final class OkfMetadata {
   /// Lifecycle status, defaulting to [OkfLifecycleStatus.stable].
   OkfLifecycleStatus get status => OkfLifecycleStatus._parse(rawStatus);
 
-  /// Absolute stale-on-or-after date, when parseable.
-  DateTime? get staleAfter => _parseDate(raw['stale_after']);
+  /// Instant from which the concept is stale, when parseable.
+  ///
+  /// A date-only value, written before OKF revision 62432a0, is read as
+  /// midnight UTC.
+  DateTime? get staleAfter => _parseInstant(raw['stale_after']);
 
   /// Original `stale_after` scalar.
   String? get rawStaleAfter => _scalarString(raw['stale_after']);
 
-  /// Whether this concept is stale on [today].
+  /// Whether this concept is stale at [now], which defaults to the current
+  /// time.
   ///
-  /// Only calendar components participate in the comparison. An absent or
-  /// malformed `stale_after` value is treated as not stale.
-  bool isStale([DateTime? today]) {
+  /// A concept is stale when `now >= stale_after`, compared as instants. An
+  /// absent or malformed `stale_after` value is treated as not stale.
+  bool isStale([DateTime? now]) {
     final boundary = staleAfter;
     if (boundary == null) {
       return false;
     }
-    final effectiveToday = today ?? DateTime.now();
-    return _dateOrdinal(effectiveToday) >= _dateOrdinal(boundary);
+    return !(now ?? DateTime.now()).isBefore(boundary);
   }
 
-  /// Whether this concept is stale on the explicitly supplied date.
-  bool isStaleOn(DateTime today) => isStale(today);
+  /// Whether this concept is stale at the explicitly supplied instant.
+  bool isStaleOn(DateTime now) => isStale(now);
 
   /// Legacy v0.1 `timestamp`, superseded by `generated.at`.
   String? get legacyTimestamp => _scalarString(raw['timestamp']);
@@ -516,25 +525,11 @@ List<String> _scalarList(Object? value) {
   );
 }
 
-DateTime? _parseDate(Object? value) {
+DateTime? _parseInstant(Object? value) {
   if (value is DateTime) {
-    return DateTime.utc(value.year, value.month, value.day);
+    return value;
   }
-  final raw = _scalarString(value);
-  if (raw == null) {
-    return null;
-  }
-  final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(raw);
-  if (match == null) {
-    return null;
-  }
-  final year = int.parse(match.group(1)!);
-  final month = int.parse(match.group(2)!);
-  final day = int.parse(match.group(3)!);
-  final parsed = DateTime.utc(year, month, day);
-  return parsed.year == year && parsed.month == month && parsed.day == day
-      ? parsed
-      : null;
+  return parseOkfInstant(_scalarString(value));
 }
 
 DateTime? _parseDateTime(Object? value) {
@@ -544,6 +539,3 @@ DateTime? _parseDateTime(Object? value) {
   final raw = _scalarString(value);
   return raw == null ? null : parseIsoDateTime(raw);
 }
-
-int _dateOrdinal(DateTime value) =>
-    value.year * 10000 + value.month * 100 + value.day;
