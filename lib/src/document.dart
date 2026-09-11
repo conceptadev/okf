@@ -222,7 +222,7 @@ final class OkfDocument {
   OkfLifecycleStatus get status => metadata.status;
 
   /// Whether the document is stale on [today].
-  bool isStale([DateTime? today]) => metadata.isStale(today);
+  bool isStale([DateTime? now]) => metadata.isStale(now);
 
   /// Returns a copy with selected document parts replaced.
   OkfDocument copyWith({

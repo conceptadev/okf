@@ -2,6 +2,7 @@ import '../concept_id.dart';
 import '../document.dart';
 import '../finding.dart';
 import '../iso_date.dart';
+import '../timestamps.dart';
 import 'rule.dart';
 
 /// Fixed Spec rules over concept documents, in validation order.
@@ -90,16 +91,16 @@ conceptRules = List<OkfSpecRule>.unmodifiable(<OkfSpecRule>[
   ),
   _conceptRule(
     'invalid-usage-window',
-    'Usage windows should contain valid ISO date boundaries.',
+    'Usage windows should contain valid ISO 8601 boundaries.',
     OkfFindingSeverity.advisory,
     (id, document) {
       final window = document.frontmatter['usage_window'];
       return <String>[
         if (window != null &&
             (window is! Map<Object?, Object?> ||
-                !_isIsoDate(window['from']) ||
-                !_isIsoDate(window['to'])))
-          'usage_window should contain ISO date from and to values.',
+                !_isTimestamp(window['from']) ||
+                !_isTimestamp(window['to'])))
+          'usage_window should contain ISO 8601 from and to datetimes.',
       ];
     },
   ),
@@ -162,14 +163,41 @@ conceptRules = List<OkfSpecRule>.unmodifiable(<OkfSpecRule>[
   ),
   _conceptRule(
     'invalid-stale-after',
-    'Staleness dates should use the ISO 8601 YYYY-MM-DD form.',
+    'Staleness should be an ISO 8601 datetime with a UTC offset.',
     OkfFindingSeverity.advisory,
     (id, document) {
       final staleAfter = document.frontmatter['stale_after'];
       return <String>[
-        if (staleAfter != null && !_isIsoDate(staleAfter))
-          'stale_after should be an ISO 8601 YYYY-MM-DD date.',
+        if (staleAfter != null && !_isTimestamp(staleAfter))
+          'stale_after should be an ISO 8601 datetime with a UTC offset, '
+              'such as 2026-09-23T00:00:00Z.',
       ];
+    },
+  ),
+  _conceptRule(
+    'timestamp-without-offset',
+    'Timestamps should be ISO 8601 datetimes with a UTC offset.',
+    OkfFindingSeverity.advisory,
+    (id, document) {
+      final messages = <String>[];
+      visitOkfTimestamps(document.frontmatter, (path, value) {
+        if (value is! String || hasUtcOffset(value)) {
+          return;
+        }
+        if (parseIsoDate(value) != null) {
+          messages.add(
+            '$path is the date $value; OKF timestamps are datetimes with a '
+            'UTC offset. Write ${value}T00:00:00Z, or run '
+            'okf format --migrate-timestamps.',
+          );
+        } else if (parseIsoDateTime(value) != null) {
+          messages.add(
+            '$path is $value, which has no UTC offset. Add Z or an offset '
+            'such as +02:00.',
+          );
+        }
+      });
+      return messages;
     },
   ),
   _conceptRule(
@@ -280,13 +308,11 @@ bool _isTruthy(Object? value) {
   return true;
 }
 
-bool _isIsoDate(Object? value) {
+bool _isTimestamp(Object? value) {
   if (value is DateTime) {
     return true;
   }
-  return value is String &&
-      RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value) &&
-      parseIsoDate(value) != null;
+  return value is String && parseOkfInstant(value) != null;
 }
 
 bool _isIsoDateTime(Object? value) {

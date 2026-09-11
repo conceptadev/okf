@@ -131,15 +131,25 @@ void main() {
       expect(unknown.rawStatus, 'archived');
     });
 
-    test('becomes stale on the boundary date', () {
+    test('becomes stale at the boundary instant', () {
+      final metadata = OkfMetadata.fromFrontmatter(<String, Object?>{
+        'stale_after': '2026-09-23T12:00:00+02:00',
+      });
+
+      expect(metadata.staleAfter, DateTime.utc(2026, 9, 23, 10));
+      expect(metadata.isStale(DateTime.utc(2026, 9, 23, 9, 59)), isFalse);
+      expect(metadata.isStale(DateTime.utc(2026, 9, 23, 10)), isTrue);
+      expect(metadata.isStale(DateTime.utc(2026, 9, 24)), isTrue);
+    });
+
+    test('reads a date-only stale_after as midnight UTC', () {
       final metadata = OkfMetadata.fromFrontmatter(<String, Object?>{
         'stale_after': '2026-09-23',
       });
 
-      expect(metadata.isStale(DateTime(2026, 9, 22, 23, 59)), isFalse);
-      expect(metadata.isStale(DateTime(2026, 9, 23)), isTrue);
-      expect(metadata.isStale(DateTime(2026, 9, 24)), isTrue);
       expect(metadata.staleAfter, DateTime.utc(2026, 9, 23));
+      expect(metadata.isStale(DateTime.utc(2026, 9, 22, 23, 59)), isFalse);
+      expect(metadata.isStale(DateTime.utc(2026, 9, 23)), isTrue);
     });
 
     test('treats an invalid date as not stale', () {
