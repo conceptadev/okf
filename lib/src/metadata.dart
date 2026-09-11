@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'iso_date.dart';
 
 /// Frontmatter keys defined by OKF v0.2, including the v0.1 fallback key.
 const Set<String> okfKnownFrontmatterKeys = <String>{
@@ -541,7 +542,7 @@ DateTime? _parseDateTime(Object? value) {
     return value;
   }
   final raw = _scalarString(value);
-  return raw == null ? null : DateTime.tryParse(raw);
+  return raw == null ? null : parseIsoDateTime(raw);
 }
 
 int _dateOrdinal(DateTime value) =>
