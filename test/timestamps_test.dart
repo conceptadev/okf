@@ -80,6 +80,31 @@ void main() {
     );
   });
 
+  test('a bundle carrying date-only timestamps stays conformant', () {
+    final validation = const OkfSpecValidator().validate(
+      OkfBundle.fromDocuments(<String, OkfDocument>{
+        'concept.md': OkfDocument(frontmatter: frontmatter),
+      }),
+    );
+
+    expect(offsetFindings(frontmatter), isNotEmpty);
+    expect(validation.isConformant, isTrue);
+  });
+
+  test('date-only values read as midnight UTC only where a date was valid', () {
+    final metadata = OkfMetadata.fromFrontmatter(frontmatter);
+
+    // stale_after, usage_window and last_modified accepted a date before this
+    // revision, so a date-only value keeps reading as midnight UTC.
+    expect(metadata.staleAfter, DateTime.utc(2026, 9, 23));
+    expect(metadata.usageWindow?.from, DateTime.utc(2026, 6, 1));
+    expect(metadata.sources.single.lastModified, DateTime.utc(2026, 5, 30));
+    // generated.at and verified[].at have always required a time, so a
+    // date-only value carries no instant and no verification.
+    expect(metadata.generated?.atDateTime, isNull);
+    expect(metadata.verified.first.atDateTime, isNotNull);
+  });
+
   test('migrates date-only timestamps and leaves the rest', () {
     final migration = migrateDateOnlyTimestamps(frontmatter);
 
