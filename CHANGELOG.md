@@ -1,6 +1,39 @@
-# Changelog
+## 0.5.0
 
-## 0.4.0
+- Adopt OKF revision `62432a0`: every timestamp is an ISO 8601 datetime with a
+  UTC offset. A date-only or offset-less value raises the non-blocking
+  `okf/timestamp-without-offset` advisory naming the exact field, and
+  `OkfSpecValidation.isConformant` is unchanged, so a bundle that validates today
+  still validates. `okf validate --strict` is the exception: it escalates
+  advisories to failures, so it starts failing on date-only timestamps it used to
+  accept. Run `okf format --migrate-timestamps` on those bundles, or drop
+  `--strict` until you have.
+- Compare staleness as an instant rather than a local calendar day. `stale_after`
+  was read as a calendar date and compared in the caller's local zone; it is now
+  an instant, stale when `now >= stale_after`. East of UTC a concept goes stale
+  later than before — two hours in Berlin, twelve in Auckland — and west of UTC it
+  can now become stale on the previous local day. Callers in UTC see no change.
+- Add `okf format --migrate-timestamps`, which rewrites date-only values to
+  `T00:00:00Z` and reports every change. It is opt-in, idempotent, writes nothing
+  under `--check`, and leaves offset-less datetimes alone rather than guessing a
+  zone for them. Migrating a date-only `verified.at` can raise a concept's
+  `trust_tier` from `unverified` to `human-reviewed`, because the verification now
+  carries a usable time; that change is visible in `okf graph`.
+- Reject impossible timestamps through one strict parser. `2026-02-30` previously
+  rolled over into March 2 and was accepted; it is now rejected everywhere. Date
+  values still read as midnight UTC for `stale_after`, `usage_window` and
+  `last_modified`, where a date has always been valid. `generated.at` and
+  `verified[].at` have always required a time, so a date-only value there carries
+  no instant and does not count as a verification.
+
+## 0.4.2
+
+- No changes to the package. This release completes the deployment pipeline:
+  the macOS job now holds the `contents: write` permission its uploads need,
+  so 0.4.1's macOS archives and Homebrew formula, which were published by
+  hand, are produced by CI again.
+
+## 0.4.1
 
 - Use Ack schemas for graph-query parsing and generated, typed MCP arguments.
   Each input schema owns runtime constraints and the advertised JSON Schema.

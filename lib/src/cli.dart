@@ -6,6 +6,7 @@ import 'package:args/args.dart';
 import 'package:path/path.dart' as p;
 
 import 'control_characters.dart';
+import 'document.dart';
 import 'finding.dart';
 import 'graph.dart';
 import 'index_generator.dart';
@@ -14,6 +15,7 @@ import 'io/bundle_lock.dart';
 import 'io/bundle_writer.dart';
 import 'mcp/server.dart';
 import 'spec_rules/load_findings.dart';
+import 'timestamps.dart';
 import 'validator.dart';
 import 'version.dart';
 
@@ -165,6 +167,8 @@ final class OkfCli {
   ) async {
     final desired = <String, String>{};
     final findings = <OkfFinding>[];
+    final migrate = command.flag('migrate-timestamps');
+    final migrations = <String>[];
     // Protect nested file operands that cannot identify the enclosing bundle.
     final expectedSources = <String, String>{};
     if (type == FileSystemEntityType.file) {
@@ -181,13 +185,23 @@ final class OkfCli {
       );
       if (source != null) {
         expectedSources[relativePath] = source;
-        _addFormattedSource(source, relativePath, desired, findings);
+        _addFormattedSource(
+          source,
+          relativePath,
+          desired,
+          findings,
+          migrations: migrate ? migrations : null,
+        );
       }
     } else if (type == FileSystemEntityType.directory) {
       final loaded = await _loader.inspect(rootPath);
       findings.addAll(loaded.report.findings);
       for (final entry in loaded.documents.entries) {
-        desired[entry.key] = entry.value.serialize();
+        desired[entry.key] = _migrated(
+          entry.value,
+          entry.key,
+          migrate ? migrations : null,
+        ).serialize();
       }
       for (final entry in loaded.indexes.entries) {
         _addFormattedSource(entry.value, entry.key, desired, findings);
@@ -208,6 +222,9 @@ final class OkfCli {
     }
 
     final checkOnly = command.flag('check');
+    final migrationLines = migrations.map(
+      (change) => '${checkOnly ? 'Would migrate' : 'Migrated'} $change',
+    );
     final writeResult = await _writer.writeAll(
       rootPath,
       desired,
@@ -216,14 +233,15 @@ final class OkfCli {
     );
     if (checkOnly && writeResult.hasChanges) {
       // A check-mode exit is an adapter decision (ADR-0007).
-      return _CliCommandResult(
-        OkfExitCode.findings.value,
-        writeResult.changedPaths.map((path) => 'Would format $path'),
-      );
+      return _CliCommandResult(OkfExitCode.findings.value, <String>[
+        ...migrationLines,
+        ...writeResult.changedPaths.map((path) => 'Would format $path'),
+      ]);
     }
 
     if (writeResult.hasChanges) {
       return _CliCommandResult(OkfExitCode.success.value, <String>[
+        ...migrationLines,
         'Formatted ${writeResult.changedPaths.length} file(s).',
       ]);
     }
@@ -337,12 +355,36 @@ final class OkfCli {
     String source,
     String relativePath,
     Map<String, String> desired,
-    List<OkfFinding> findings,
-  ) {
+    List<OkfFinding> findings, {
+    List<String>? migrations,
+  }) {
     final document = parseMarkdown(source, relativePath, findings);
     if (document != null) {
-      desired[relativePath] = document.serialize();
+      desired[relativePath] = _migrated(
+        document,
+        relativePath,
+        migrations,
+      ).serialize();
     }
+  }
+
+  /// Applies the date-only timestamp migration when [migrations] collects it.
+  OkfDocument _migrated(
+    OkfDocument document,
+    String relativePath,
+    List<String>? migrations,
+  ) {
+    if (migrations == null) {
+      return document;
+    }
+    final migration = migrateDateOnlyTimestamps(document.frontmatter);
+    if (migration.changes.isEmpty) {
+      return document;
+    }
+    migrations.addAll(
+      migration.changes.map((change) => '$relativePath: $change'),
+    );
+    return document.copyWith(frontmatter: migration.frontmatter);
   }
 
   void _emitReport(OkfReport report) => report.toTextLines().forEach(_out);
@@ -423,6 +465,13 @@ ArgParser _buildParser() {
         'check',
         negatable: false,
         help: 'Report files that would change without writing them.',
+      )
+      ..addFlag(
+        'migrate-timestamps',
+        negatable: false,
+        help:
+            'Rewrite date-only timestamps as midnight UTC datetimes, as OKF '
+            'revision 62432a0 requires.',
       ),
   );
   parser.addCommand(

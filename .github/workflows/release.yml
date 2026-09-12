@@ -26,7 +26,7 @@ jobs:
       id-token: write # exchanged by setup-dart for temporary pub.dev credentials
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Prepare environment
         uses: ./.github/actions/prepare
@@ -61,25 +61,48 @@ jobs:
         working-directory: tool/release
         run: dart run grinder pkg-github-linux
 
+      # The prepare action above dropped the credential so that dependency
+      # resolution could talk to pub.dev unauthenticated. Mint a fresh one now
+      # that every read is done. Same SDK as prepare, so this is a tool-cache
+      # hit and only the token is refreshed; the cleanup guards the download
+      # path that test.yml documents, in case the two versions ever diverge.
+      - name: Clean Dart SDK temp files
+        run: rm -f ${{ runner.temp }}/dartsdk-*.zip
+
+      - name: Provision pub.dev OIDC credentials
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: ${{ env.RELEASE_DART_SDK }}
+          problem-matcher: false
+
       # cli_pkg's pkg-pub-deploy only knows how to write a long-lived
-      # PUB_CREDENTIALS file before publishing. setup-dart already exchanged
-      # this job's OIDC token for temporary pub.dev credentials, so publish
-      # directly and keep no durable secret.
+      # PUB_CREDENTIALS file before publishing. setup-dart exchanged this job's
+      # OIDC token for temporary pub.dev credentials, so publish directly and
+      # keep no durable secret.
+      #
+      # The `test` job that gates this one already ran `dart pub publish
+      # --dry-run` at this commit, so --skip-validation drops only a repeated
+      # client-side pass; resolving again here would authenticate the reads
+      # that pub.dev rejects. pub.dev still validates the archive server-side.
+      # Drop the flag once https://github.com/dart-lang/pub-dev/issues/9576
+      # is fixed.
       - name: Deploy to Pub
-        run: dart pub publish --force
+        run: dart pub publish --force --skip-validation
 
   deploy-macos:
     name: Deploy macOS
     runs-on: macos-latest
     needs: release
     permissions:
-      contents: read
+      # pkg-github-macos uploads assets to the release the previous job
+      # created, which is a write to repository contents.
+      contents: write
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Prepare environment
         uses: ./.github/actions/prepare

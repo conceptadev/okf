@@ -21,6 +21,7 @@ void main() {
         'okf/invalid-verified',
         'okf/invalid-status',
         'okf/invalid-stale-after',
+        'okf/timestamp-without-offset',
         'okf/missing-computation-runtime',
         'okf/invalid-computation-parameters',
         'okf/invalid-executor',

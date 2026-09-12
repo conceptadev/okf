@@ -31,8 +31,10 @@ void main() {
     expect(
       // Normalized: a Windows runner checks the tree out with CRLF.
       File('CHANGELOG.md').readAsStringSync().replaceAll('\r\n', '\n'),
-      startsWith('# Changelog\n\n## $version\n'),
-      reason: 'cli_pkg builds the release notes from the first entry',
+      startsWith('## $version\n'),
+      reason:
+          'cli_pkg scans CHANGELOG.md from offset 0 for "## <version>", '
+          'so no title heading may precede the first entry',
     );
     expect(File('package.json').existsSync(), false);
     expect(Directory('.changeset').existsSync(), false);
@@ -101,6 +103,18 @@ void main() {
         contains(r'GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GH_TOKEN }}'),
       ),
     );
+
+    // Every pkg-github-* task uploads assets to the release, which the
+    // automatic token may only do with contents: write. deploy-macos shipped
+    // once with contents: read and failed after pub.dev had already published.
+    for (final name in const <String>['release', 'deploy-macos']) {
+      final job = jobs[name] as YamlMap;
+      expect(
+        (job['permissions'] as YamlMap)['contents'],
+        'write',
+        reason: '$name uploads release assets',
+      );
+    }
     // Against the parsed workflow, not the source: comments legitimately name
     // the mechanisms this asserts the workflow no longer runs.
     expect(

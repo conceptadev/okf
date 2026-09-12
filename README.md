@@ -6,7 +6,7 @@ indexes, and graphs bundles made from Markdown documents with YAML
 frontmatter.
 
 This package implements the format described by the specification at
-revision `3fcbb9f828c2f23d109c855ee403c3a4c81f3a96`. It is an independent
+revision `62432a095456147ee71e70ac6e4dc0d2dea3ac30`. It is an independent
 implementation and is not affiliated with or endorsed by Google.
 
 ## Features
@@ -51,6 +51,7 @@ dart pub global activate okf
 okf validate path/to/bundle
 okf validate path/to/bundle --strict
 okf format path/to/bundle --check
+okf format path/to/bundle --migrate-timestamps
 okf index path/to/bundle --check
 okf graph path/to/bundle --output mermaid
 okf mcp path/to/bundle
@@ -93,7 +94,7 @@ Gate a repository on OKF Spec conformance with one step and no configuration:
 
 ```yaml
 steps:
-  - uses: conceptadev/okf@v0.4.0
+  - uses: conceptadev/okf@v0.5.0
 ```
 
 The action downloads the released `okf` archive for the ref in `uses`, unpacks
@@ -400,5 +401,5 @@ their generated schema companions are available through the public OKF library.
 
 Apache License 2.0.
 
-[spec]: https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/3fcbb9f828c2f23d109c855ee403c3a4c81f3a96/okf/SPEC.md
+[spec]: https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/62432a095456147ee71e70ac6e4dc0d2dea3ac30/okf/SPEC.md
 [example]: https://github.com/conceptadev/okf/blob/main/example/okf.dart

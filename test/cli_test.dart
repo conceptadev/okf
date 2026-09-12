@@ -235,6 +235,44 @@ void main() {
     expect(secondCheck.stdout, 'Already formatted.');
   });
 
+  test('format migrates date-only timestamps only when asked', () async {
+    final file = File(p.join(bundle.path, 'alpha.md'));
+    await file.writeAsString(
+      '---\ntype: Reference\nstale_after: 2026-09-23\n---\n\n# Alpha\n',
+    );
+
+    final plain = await runCli(<String>['format', 'bundle'], sandbox.path);
+    expect(plain.exitCode, 0);
+    expect(await file.readAsString(), isNot(contains('T00:00:00Z')));
+
+    final check = await runCli(<String>[
+      'format',
+      'bundle',
+      '--migrate-timestamps',
+      '--check',
+    ], sandbox.path);
+    expect(check.exitCode, 1);
+    expect(
+      check.stdout,
+      contains(
+        'Would migrate alpha.md: stale_after 2026-09-23 -> '
+        '2026-09-23T00:00:00Z',
+      ),
+    );
+
+    final migrated = await runCli(<String>[
+      'format',
+      'bundle',
+      '--migrate-timestamps',
+    ], sandbox.path);
+    expect(migrated.exitCode, 0);
+    expect(migrated.stdout, contains('Migrated alpha.md: stale_after'));
+    expect(
+      await file.readAsString(),
+      contains('stale_after: "2026-09-23T00:00:00Z"'),
+    );
+  });
+
   for (final command in <String>['format', 'index']) {
     // The bundle lock queues claims in arrival order inside one isolate, so
     // this reproduces the exact interleaving that used to lose the update:
