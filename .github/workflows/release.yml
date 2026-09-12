@@ -80,14 +80,12 @@ jobs:
       # OIDC token for temporary pub.dev credentials, so publish directly and
       # keep no durable secret.
       #
-      # The `test` job that gates this one already ran `dart pub publish
-      # --dry-run` at this commit, so --skip-validation drops only a repeated
-      # client-side pass; resolving again here would authenticate the reads
-      # that pub.dev rejects. pub.dev still validates the archive server-side.
-      # Drop the flag once https://github.com/dart-lang/pub-dev/issues/9576
-      # is fixed.
+      # --force skips the interactive confirmation, which a workflow cannot
+      # answer. Validation runs: dart-lang/pub-dev#9576, which rejected
+      # authenticated metadata reads with HTTP 403 and forced
+      # --skip-validation here, is fixed upstream.
       - name: Deploy to Pub
-        run: dart pub publish --force --skip-validation
+        run: dart pub publish --force
 
   deploy-macos:
     name: Deploy macOS
