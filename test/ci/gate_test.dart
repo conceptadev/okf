@@ -52,7 +52,8 @@ void main() {
     final releaseEnvironment = releasePubspec['environment'] as YamlMap;
     final releaseDependencies = releasePubspec['dependencies'] as YamlMap;
 
-    expect((packagePubspec['environment'] as YamlMap)['sdk'], '>=3.9.0 <4.0.0');
+    final packageSdk = (packagePubspec['environment'] as YamlMap)['sdk'];
+    expect(packageSdk, '>=3.11.0 <4.0.0');
     expect(releasePubspec['name'], 'okf_release');
     expect(releasePubspec['publish_to'], 'none');
     expect(releaseEnvironment['sdk'], '>=3.11.0 <4.0.0');
@@ -189,10 +190,10 @@ void main() {
     expect(triggers, contains('workflow_call'));
     expect(triggers, contains('pull_request'));
     expect(jobs, contains('test'));
-    // pubspec.yaml promises >=3.9.0 and only this job holds it to that.
+    // pubspec.yaml promises >=3.11.0 and only this job holds it to that.
     expect(
       (jobs['sdk-floor'] as YamlMap).toString(),
-      contains('sdk-version: 3.9.0'),
+      contains('sdk-version: 3.11.0'),
     );
     expect(
       (jobs['test'] as YamlMap).toString(),
