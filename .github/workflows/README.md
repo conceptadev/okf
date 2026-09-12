@@ -16,7 +16,7 @@
 
 1. **Test** — the whole of `test.yml`
 2. **Release** (ubuntu) — `pkg-github-release`, `pkg-github-linux`, then
-   `dart pub publish --force --skip-validation`
+   `dart pub publish --force`
 3. **Deploy macOS** — `pkg-github-macos`, then the Homebrew formula, versioned
    and unversioned
 
