@@ -57,7 +57,7 @@ void main() {
     expect(releasePubspec['publish_to'], 'none');
     expect(releaseEnvironment['sdk'], '>=3.11.0 <4.0.0');
     expect(releaseDependencies['cli_pkg'], '2.15.2');
-    expect(releaseDependencies['grinder'], '0.10.0');
+    expect(releaseDependencies['grinder'], '0.10.1');
     expect(
       (packagePubspec['dev_dependencies'] as YamlMap),
       isNot(contains('cli_pkg')),
