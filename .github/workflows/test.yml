@@ -22,7 +22,8 @@ permissions:
 env:
   SDK_VERSION: "stable"
   # The release tool depends on cli_pkg 2.15.2, which uses the Dart 3.11-only
-  # xml 7 API. The rest of the repository still targets the >=3.4.0 floor.
+  # xml 7 API. The package floor is now 3.11.0 too, so this no longer isolates a
+  # higher requirement; it pins an exact SDK where the other jobs track stable.
   RELEASE_DART_SDK: "3.11.0"
 
 concurrency:
@@ -112,8 +113,9 @@ jobs:
         run: dart test
         shell: bash
 
-  # pubspec.yaml promises >=3.9.0. Nothing else in this workflow would notice a
-  # feature that silently raises the real floor, so keep one job on it.
+  # pubspec.yaml promises >=3.11.0. Nothing else in this workflow would notice a
+  # feature that silently raises the real floor, so keep one job on it. It equals
+  # the stable job only until stable moves past 3.11.
   sdk-floor:
     name: SDK floor
     timeout-minutes: 30
@@ -125,7 +127,7 @@ jobs:
       - name: Prepare environment
         uses: ./.github/actions/prepare
         with:
-          sdk-version: "3.9.0"
+          sdk-version: "3.11.0"
 
       # No format check here: dart format's output is version-dependent, and
       # the stable job already enforces the canonical style.
